@@ -130,7 +130,8 @@ if strcmp(task, 'MGS') && strcmp(epoch, 'delay')
 
                disp("writetable")
 
-        catch
+        catch e
+		disp(e)
             disp("did not run")
             return;
         end

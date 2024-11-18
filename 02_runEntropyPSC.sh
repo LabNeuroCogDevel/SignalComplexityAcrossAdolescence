@@ -6,9 +6,11 @@ set -euo pipefail
 # to see what this would do but not actually do it, run like
 #  DRYRUN=1 ./02_runEntropyPSC.sh
 [ -n "${DRYRUN:-}" ] && DRYRUN="echo" || DRYRUN=
+# run from script directory
+cd -P "$(dirname "$0")"
 
 outdir=$PWD/Results/MGS_Entropy/individual_subject_files
-logname=$PWD/log/%j-%x.log # job number and job name
+log_file=/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/log/%j-%x.log # job number and job name
 
 echo "# [$(date)] collecting set file list"
 ALLFILES=(data/ICAwholeClean_homogenize/*.set)
@@ -37,9 +39,9 @@ for inputfile in "${ALLFILES[@]}"; do
              echo "# skipping $ld8 $EPOCH $LENGTH already in queue as '$job_name'" && continue
 
          echo "# [$(date)] submitting '$job_name' to make '$output'"
-         $DRYRUN sbatch -J $job_name -e $logname o $logname \
+         $DRYRUN sbatch -J "$job_name" -e "$log_file" -o "$log_file" \
            --export="INPUTFILE=$inputfile,EPOCH=$EPOCH,LENGTH=$LENGTH" \
-           sbatch_entropy.bash
+           $PWD/sbatch_entropy.bash
 
          #TODO: remove this break when ready to run for all
          break 3
@@ -47,3 +49,4 @@ for inputfile in "${ALLFILES[@]}"; do
   done
 done
 
+echo "# [$(date)] finished submitting jobs. $0 done"

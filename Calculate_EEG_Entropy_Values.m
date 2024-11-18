@@ -1,11 +1,28 @@
 function [subjectTable] = Calculate_EEG_Entropy_Values(inputEEG, varargin)
 
+addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
+
+
 %% multiscale entropy
-parpool('local', 64);
+parpool('local', 24);
+
+% 20241118 - parpool needs to know about this file
+% otherwise get error:  
+%   The source code (/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Calculate_EEG_Entropy_Values.m)
+%   for the parfor-loop that is trying to execute on the worker could not be found.
+addAttachedFiles(gcp,["/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Calculate_EEG_Entropy_Values.m",...
+                      "resources/" ])
+		     
+pool = gcp();
+this_script='/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Calculate_EEG_Entropy_Values.m';
+addAttachedFiles(pool, this_script);
+
 
 parfor c = 1:size(inputEEG.data, 1)
+    fprintf('# openning per-channel cluster c=%d\n',c)
+    % 20241118 - parpool complaining about this file (current one) being MIA
+    disp(dir(this_script))
 
-    disp(c)
     Mobj = MSobject("SampEn");
     [MSx(c,:), Ci(:,c)] = MSEn(inputEEG.data(c,:), Mobj, 'Scales', 20, 'Methodx', 'coarse', 'RadNew', 0, 'Plotx', false);
 
