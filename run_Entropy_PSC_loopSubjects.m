@@ -1,5 +1,5 @@
 
-function [subjectTable] = run_Entropy_PSC(inputfile, task, epoch, lengthValue, varargin)
+function [subjectTable] = run_Entropy_PSC_loopSubjects(task, epoch, lengthValue, varargin)
 
 % default to running on rhea
 [~,hostname]=system('hostname');
