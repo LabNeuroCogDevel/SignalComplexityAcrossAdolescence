@@ -11,8 +11,8 @@ else
    % PSC
    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1');
    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104')
-   addpath(genpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/entropyHub_v2.0.0'))
-  addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
+   addpath(('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/EntropyHub_v2.0.0'))
+ % addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
   resultPath = '/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results';
 end
 

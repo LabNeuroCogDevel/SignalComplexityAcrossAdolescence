@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --time=03:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=24
+#SBATCH --ntasks=64
 
 # Bash script for running MSE on the supercomputer for the Entropy project
 #
