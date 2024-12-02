@@ -8,7 +8,7 @@ if strncmp('rhea',hostname,4)
     parpool('local', ncores);
 else
     % PSC
-    ncores=64; % 64
+    ncores=24; % 64
     parpool('local', ncores);
 end
 
