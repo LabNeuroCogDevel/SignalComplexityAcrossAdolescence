@@ -1,14 +1,27 @@
 
-function [subjectTable] = run_Entropy(task, epoch, lengthValue, varargin)
+function [subjectTable] = run_Entropy_PSC(inputfile, task, epoch, lengthValue, varargin)
 
-addpath((('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/resources/eeglab')));
+% default to running on rhea
+[~,hostname]=system('hostname');
+if strncmp('rhea',hostname,4)
+    addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/resources/eeglab2022.1');
+    addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/fieldtrip-20220104')
+    resultPath = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results';
+else
+    % PSC
+    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1');
+    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104')
+    addpath(genpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/entropyHub_v2.0.0'))
+    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
+    resultPath = '/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results';
+end
+
+fprintf('running on %s. %s saving to %s\n', hostname, inputfile, resultPath)
+
 eeglab
-addpath(('/Volumes/Hera/Projects/7TBrainMech/scripts/fieldtrip-20220104'))
 ft_defaults
 
-maindir = ('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/preprocessed_data');
-
-dataDirectory = [maindir '/' task];
+dataDirectory = ('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/data/ICAwholeClean_homogenize/');
 
 if task == 'MGS'
     resultFolder = 'MGS_Entropy';
@@ -16,12 +29,10 @@ elseif task == 'rest'
     resultFolder = 'entropy';
 end
 
-resultPath = ('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results');
-
 savePath = [resultPath '/' resultFolder '/individual_subject_files/'];
 
 %load in all the delay files
-setfiles0 = dir([dataDirectory,'/AfterWhole/ICAwholeClean_homogenize/*icapru.set']);
+setfiles0 = dir([dataDirectory,'*icapru.set']);
 setfiles = {};
 
 for epo = 1:length(setfiles0)
@@ -40,10 +51,21 @@ for i = 1:length(setfiles0)
     inputfile = setfiles{i};
     EEG = pop_loadset(inputfile); % load in eeg file
     [d, currentName, ext ] = fileparts(inputfile);
+    if task == 'MGS'
+        resultFolder = 'MGS_Entropy';
+    elseif task == 'rest'
+        resultFolder = 'entropy';
+    end
+
+
+    savePath = [resultPath '/' resultFolder '/individual_subject_files/'];
+
+    EEG = pop_loadset(inputfile); % load in eeg file
+    [d, currentName, ext ] = fileparts(inputfile);
 
 
     if strcmp(task, 'MGS') && strcmp(epoch, 'delay')
-        if ~isfile([savePath idvalues(i,:) '_MultiScaleEntropy_delay' num2str(lengthValue) '.csv'])
+        if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_delay' num2str(lengthValue) '.csv'])
 
             if size(EEG.data,1) > 64
                 EEG = pop_select( EEG,'nochannel',{'EX3' 'EX4' 'EX5' 'EX6' 'EX7' 'EX8' 'EXG1' 'EXG2' 'EXG3' 'EXG4' 'EXG5' 'EXG6' 'EXG7' 'EXG8' 'GSR1' 'GSR2' 'Erg1' 'Erg2' 'Resp' 'Plet' 'Temp' 'FT7' 'FT8' 'TP7' 'TP8' 'TP9' 'TP10'});
@@ -73,7 +95,7 @@ for i = 1:length(setfiles0)
                     EEG.event(e).type = ['4_' num2str((EEG.event(e).duration))];
                 end
             end
-           
+
             try
 
                 if lengthValue == 6
@@ -127,25 +149,92 @@ for i = 1:length(setfiles0)
                 end
 
                 if (length(delayEEG.event) == length(EEG.event)) || (length(delayEEG.event) < 50 && lengthValue == 6) || (length(delayEEG.event) < 20 && lengthValue == 8)|| (length(delayEEG.event) < 5 && lengthValue == 10)
-                    didntRun{i} = inputfile;
-                    continue; % Move to next person in the loop if no events were removed
+                    disp("too few triggers")
+                    return; % Move to next person in the loop if no events were removed
                 end
 
 
                 [subjectTable] = Calculate_EEG_Entropy_Values(delayEEG);
+                disp("entropy ran")
 
                 % Create a new column with subject ID repeated for every row
-                subjectIDColumn = repmat(idvalues(i,:), size(subjectTable, 1),1);
+                subjectIDColumn = repmat(currentName(1:14), size(subjectTable, 1),1);
+                disp("subject column made")
 
                 % Add the new column to the existing table
                 subjectTable = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subjectTable];
+                disp("subject table made")
+
+                subjectSavePath = [savePath currentName(1:14) '_MultiScaleEntropy_delay' num2str(lengthValue) '.csv'];
+
+                disp("subjectsavepath")
+
+         	   writetable(subjectTable, subjectSavePath);
+
+               disp("writetable")
+
+            catch e
+        		disp(e)
+                disp("did not run")
+                return;
+            end
 
 
-                subjectSavePath = [savePath idvalues(i,:) '_MultiScaleEntropy_delay' num2str(lengthValue) '.csv'];
+        end
+
+    elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
+        if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_fix.csv'])
+
+            if size(EEG.data,1) > 64
+                EEG = pop_select( EEG,'nochannel',{'EX3' 'EX4' 'EX5' 'EX6' 'EX7' 'EX8' 'EXG1' 'EXG2' 'EXG3' 'EXG4' 'EXG5' 'EXG6' 'EXG7' 'EXG8' 'GSR1' 'GSR2' 'Erg1' 'Erg2' 'Resp' 'Plet' 'Temp' 'FT7' 'FT8' 'TP7' 'TP8' 'TP9' 'TP10'});
+            end
+
+
+            try
+
+                fixEEG = pop_selectevent( EEG, 'type',{'2'},'deleteevents','on');
+                % Find indices of boundary events
+                boundary_indices = find(strcmp({fixEEG.event.type}, 'boundary'));
+
+                % Remove boundary events from EEG.event structure
+                fixEEG.event(boundary_indices) = [];
+
+                fixEEG = pop_rmdat(fixEEG, {'2'},[0 1.98] ,0);
+
+                % Find indices of boundary events
+                boundary_indices = find(strcmp({fixEEG.event.type}, 'boundary'));
+
+                % Remove boundary events from EEG.event structure
+                fixEEG.event(boundary_indices) = [];
+
+                if (length(fixEEG.event) == length(EEG.event))
+                    disp("too few triggers")
+                    return; % Move to next person in the loop if no events were removed
+                end
+
+
+                [subjectTable] = Calculate_EEG_Entropy_Values(fixEEG);
+                disp("entropy ran")
+
+                % Create a new column with subject ID repeated for every row
+                subjectIDColumn = repmat(currentName(1:14), size(subjectTable, 1),1);
+                disp("subject column made")
+
+                % Add the new column to the existing table
+                subjectTable = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subjectTable];
+                disp("subject table made")
+
+                subjectSavePath = [savePath currentName(1:14) '_MultiScaleEntropy_fix.csv'];
+
+                disp("subjectsavepath")
+
                 writetable(subjectTable, subjectSavePath);
+
+                disp("writetable")
+
             catch
-                didntRun{i} = inputfile;
-                continue;
+                disp("did not run")
+                return;
             end
 
 
@@ -153,19 +242,19 @@ for i = 1:length(setfiles0)
 
     elseif task == 'rest'
 
-        if ~isfile([savePath idvalues(i,:) '_MultiScaleEntropy_eyesClosed.csv'])
+        if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'])
             EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','0'},[0 4] ,0);
 
             [subjectTable] = Calculate_EEG_Entropy_Values(EEGclosedeyes);
 
             % Create a new column with subject ID repeated for every row
-            subjectIDColumn = repmat(idvalues(i,:), size(subjectTable, 1),1);
+            subjectIDColumn = repmat(currentName(1:14), size(subjectTable, 1),1);
 
             % Add the new column to the existing table
             subjectTable = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subjectTable];
 
 
-            subjectSavePath = [savePath idvalues(i,:) '_MultiScaleEntropy_eyesClosed.csv'];
+            subjectSavePath = [savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'];
             writetable(subjectTable, subjectSavePath);
 
 

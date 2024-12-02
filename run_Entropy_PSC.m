@@ -1,10 +1,24 @@
 
 function [subjectTable] = run_Entropy_PSC(inputfile, task, epoch, lengthValue, varargin)
 
-addpath(genpath(('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1')));
-addpath(('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104'))
-addpath(genpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/entropyHub_v2.0.0'))
+% default to running on rhea
+[~,hostname]=system('hostname'); 
+if strncmp('rhea',hostname,4)
+   addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/resources/eeglab2022.1');
+   addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/fieldtrip-20220104')
+  resultPath = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results';
+else
+   % PSC
+   addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1');
+   addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104')
+   addpath(genpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/entropyHub_v2.0.0'))
+  addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
+  resultPath = '/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results';
+end
 
+fprintf('running on %s. %s saving to %s\n', hostname, inputfile, resultPath)
+
+eeglab
 ft_defaults
 
 if task == 'MGS'
@@ -13,7 +27,6 @@ elseif task == 'rest'
     resultFolder = 'entropy';
 end
 
-resultPath = ('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results');
 
 savePath = [resultPath '/' resultFolder '/individual_subject_files/'];
 

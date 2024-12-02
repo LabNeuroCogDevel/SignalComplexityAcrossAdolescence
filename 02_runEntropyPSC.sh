@@ -9,14 +9,22 @@ set -euo pipefail
 # run from script directory
 cd -P "$(dirname "$0")"
 
+case $(hostname) in
+   *rhea*) 
+      ALLFILES=(/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/preprocessed_data/MGS/AfterWhole/ICAwholeClean_homogenize/*icapru.set);;
+   *)
+      ALLFILES=(data/ICAwholeClean_homogenize/*.set) ;;
+esac
 outdir=$PWD/Results/MGS_Entropy/individual_subject_files
 log_file=/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/log/%j-%x.log # job number and job name
 
 echo "# [$(date)] collecting set file list"
-ALLFILES=(data/ICAwholeClean_homogenize/*.set)
 echo "# [$(date)] running for ${#ALLFILES[@]} set files"
 
 for inputfile in "${ALLFILES[@]}"; do 
+   [ ! -r "$inputfile" ] &&
+      echo "cannot read $inputfile" >&2 && continue
+
   ld8=$(grep -oP "\d{5}_\d{8}" <<< "$inputfile")
 
   for EPOCH in "delay" "fix"; do
@@ -43,8 +51,7 @@ for inputfile in "${ALLFILES[@]}"; do
            --export="INPUTFILE=$inputfile,EPOCH=$EPOCH,LENGTH=$LENGTH" \
            $PWD/sbatch_entropy.bash
 
-         #TODO: remove this break when ready to run for all
-         break 3
+         [ -n "${ONLYONE:-}" ] && break 3
      done
   done
 done
