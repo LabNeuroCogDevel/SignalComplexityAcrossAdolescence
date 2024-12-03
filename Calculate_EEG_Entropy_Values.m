@@ -3,14 +3,14 @@ function [subjectTable] = Calculate_EEG_Entropy_Values(inputEEG, varargin)
 %% multiscale entropy
 
 [~,hostname]=system('hostname');
-if strncmp('rhea',hostname,4)
-    ncores=10; % 64
-    parpool('local', ncores);
-else
-    % PSC
-    ncores=24; % 64
-    parpool('local', ncores);
-end
+%if strncmp('rhea',hostname,4)
+ %   ncores=10; % 64
+  %  parpool('local', ncores);
+%else
+ %   % PSC
+  %  ncores=12; % 64
+   % parpool('local', ncores);
+%end
 
 
 % 20241118 - parpool needs to know about this file
@@ -25,7 +25,7 @@ end
 %addAttachedFiles(pool, this_script);
 
 
-parfor c = 1:size(inputEEG.data, 1)
+for c = 1:size(inputEEG.data, 1)
     fprintf('# openning per-channel cluster c=%d\n',c)
     % 20241118 - parpool complaining about this file (current one) being MIA
     % disp(dir(this_script))
