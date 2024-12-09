@@ -162,7 +162,6 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
 
 
         try
-
             fixEEG = pop_selectevent( EEG, 'type',{'2'},'deleteevents','on');
             % Find indices of boundary events
             boundary_indices = find(strcmp({fixEEG.event.type}, 'boundary'));

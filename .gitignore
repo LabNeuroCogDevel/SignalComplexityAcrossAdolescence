@@ -1,2 +1,6 @@
 data/
 resources/
+._*
+sEEG/._*
+*.mat
+*.csv
