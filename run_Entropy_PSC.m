@@ -124,7 +124,8 @@ if strcmp(task, 'MGS') && strcmp(epoch, 'delay')
             end
 
 
-            [subjectTable] = Calculate_EEG_Entropy_Values(delayEEG);
+            [subjectTable] = Calculate_EEG_Entropy_Values_wf(delayEEG);
+
             disp("entropy ran")
 
             % Create a new column with subject ID repeated for every row
@@ -177,13 +178,13 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
             % Remove boundary events from EEG.event structure
             fixEEG.event(boundary_indices) = [];
 
-            if (length(fixEEG.event) == length(EEG.event))
+            if (length(fixEEG.event) == length(EEG.event)) || (length(fixEEG.event) < 80)
                 disp("too few triggers")
                 return; % Move to next person in the loop if no events were removed
             end
 
 
-            [subjectTable] = Calculate_EEG_Entropy_Values(fixEEG);
+            [subjectTable] = Calculate_EEG_Entropy_Values_wf(fixEEG);
             disp("entropy ran")
 
             % Create a new column with subject ID repeated for every row

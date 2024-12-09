@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # 20241116WF - rewrite of allSubs_PSC.sh to loop over epohc and length
+# 20241206WF - add EPOCHS; add $sbatch_args but not used
+EPOCHS=("fix")
 
 # to see what this would do but not actually do it, run like
 #  DRYRUN=1 ./02_runEntropyPSC.sh
@@ -27,11 +29,13 @@ for inputfile in "${ALLFILES[@]}"; do
 
   ld8=$(grep -oP "\d{5}_\d{8}" <<< "$inputfile")
 
-  for EPOCH in "delay" "fix"; do
+  for EPOCH in "${EPOCHS[@]}"; do
 
      # epoch determins what lengths there are
      case $EPOCH in 
-       fix)   lengths=(0);;
+       fix)   lengths=(0);
+	       # TODO: this is unused and should maybe stay that way (20241206WF)
+	       sbatch_args=(--ntasks-per-node=1 -p RM-shared --time=06:00:00);;
        delay) lengths=(6);; # TODO: maybe add 8 and 10
      esac
 
@@ -47,9 +51,11 @@ for inputfile in "${ALLFILES[@]}"; do
              echo "# skipping $ld8 $EPOCH $LENGTH already in queue as '$job_name'" && continue
 
          echo "# [$(date)] submitting '$job_name' to make '$output'"
-         $DRYRUN sbatch -J "$job_name" -e "$log_file" -o "$log_file" \
-           --export="INPUTFILE=$inputfile,EPOCH=$EPOCH,LENGTH=$LENGTH" \
-           $PWD/sbatch_entropy.bash
+         $DRYRUN sbatch -J "$job_name" \
+		 -e "$log_file" -o "$log_file" \
+                 --export="INPUTFILE=$inputfile,EPOCH=$EPOCH,LENGTH=$LENGTH" \
+                 $PWD/sbatch_entropy.bash
+	         # TODO add "${sbatch_args[@]}" to force fix to one core on RM-shared (12Gb ram)
 
          [ -n "${ONLYONE:-}" ] && break 3
      done
