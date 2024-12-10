@@ -2,18 +2,18 @@
 function [subjectTable] = run_Entropy_PSC(inputfile, task, epoch, lengthValue, varargin)
 
 % default to running on rhea
-[~,hostname]=system('hostname'); 
+[~,hostname]=system('hostname');
 if strncmp('rhea',hostname,4)
-   addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/resources/eeglab2022.1');
-   addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/fieldtrip-20220104')
-  resultPath = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results';
+    addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/resources/eeglab2022.1');
+    addpath('/Volumes/Hera/Projects/7TBrainMech/scripts/fieldtrip-20220104')
+    resultPath = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results';
 else
-   % PSC
-   addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1');
-   addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104')
-   addpath(('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/EntropyHub_v2.0.0'))
- % addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
-  resultPath = '/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results';
+    % PSC
+    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/eeglab2022.1');
+    addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/fieldtrip-20220104')
+    addpath(('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/resources/EntropyHub_v2.0.0'))
+    % addpath('/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/');
+    resultPath = '/ocean/projects/soc230004p/shared/SignalComplexityAcrossAdolescene/Results';
 end
 
 fprintf('running on %s. %s saving to %s\n', hostname, inputfile, resultPath)
@@ -140,12 +140,12 @@ if strcmp(task, 'MGS') && strcmp(epoch, 'delay')
 
             disp("subjectsavepath")
 
-        	   writetable(subjectTable, subjectSavePath);
+            writetable(subjectTable, subjectSavePath);
 
-               disp("writetable")
+            disp("writetable")
 
         catch e
-		disp(e)
+    		disp(e)
             disp("did not run")
             return;
         end
@@ -210,9 +210,10 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
 
     end
 
- elseif strcmp(task, 'Resting_State')
+elseif strcmp(task, 'Resting_State')
 
     if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'])
+        
         EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','0'},[0 4] ,0);
 
         % Find indices of boundary events
@@ -220,10 +221,10 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
 
         % Remove boundary events from EEG.event structure
         EEGclosedeyes.event(boundary_indices) = [];
-	
-	if (length(EEGclosedeyes.event) == length(EEG.event)) || (length(EEGclosedeyes.event) < 50)
-	       	disp("too few triggers")
-               	return; % Move to next person in the loop if no events were removed
+
+        if (length(EEGclosedeyes.event) == length(EEG.event)) || (length(EEGclosedeyes.event) < 40) || (length(EEGclosedeyes.event) > 100)
+            disp("wrong nunmber of triggers")
+            return; % Move to next person in the loop if no events were removed
         end
 
 
