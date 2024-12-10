@@ -210,12 +210,18 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
 
     end
 
-elseif task == 'rest'
+ elseif strcmp(task, 'Resting_State')
 
     if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'])
         EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','0'},[0 4] ,0);
 
-        [subjectTable] = Calculate_EEG_Entropy_Values(EEGclosedeyes);
+        % Find indices of boundary events
+        boundary_indices = find(strcmp({EEGclosedeyes.event.type}, 'boundary'));
+
+        % Remove boundary events from EEG.event structure
+        EEGclosedeyes.event(boundary_indices) = [];
+
+        [subjectTable] = Calculate_EEG_Entropy_Values_wf(EEGclosedeyes);
 
         % Create a new column with subject ID repeated for every row
         subjectIDColumn = repmat(currentName(1:14), size(subjectTable, 1),1);
@@ -224,7 +230,7 @@ elseif task == 'rest'
         subjectTable = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subjectTable];
 
 
-        subjectSavePath = [savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'];
+        subjectSavePath = [savePath 'timeScale20/eyesClosed/' currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'];
         writetable(subjectTable, subjectSavePath);
 
 

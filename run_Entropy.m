@@ -10,9 +10,9 @@ maindir = ('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/preprocessed_da
 
 dataDirectory = [maindir '/' task];
 
-if task == 'MGS'
+if strcmp(task, 'MGS')
     resultFolder = 'MGS_Entropy';
-elseif task == 'rest'
+elseif strcmp(task, 'Resting_State')
     resultFolder = 'entropy';
 end
 
@@ -151,12 +151,18 @@ for i = 1:length(setfiles0)
 
         end
 
-    elseif task == 'rest'
+    elseif strcmp(task, 'Resting_State')
 
         if ~isfile([savePath idvalues(i,:) '_MultiScaleEntropy_eyesClosed.csv'])
             EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','0'},[0 4] ,0);
+           
+            % Find indices of boundary events
+            boundary_indices = find(strcmp({EEGclosedeyes.event.type}, 'boundary'));
 
-            [subjectTable] = Calculate_EEG_Entropy_Values(EEGclosedeyes);
+            % Remove boundary events from EEG.event structure
+            EEGclosedeyes.event(boundary_indices) = [];
+
+            [subjectTable] = Calculate_EEG_Entropy_Values_wf(EEGclosedeyes);
 
             % Create a new column with subject ID repeated for every row
             subjectIDColumn = repmat(idvalues(i,:), size(subjectTable, 1),1);

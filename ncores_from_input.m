@@ -21,7 +21,7 @@ function ncores = ncores_from_input(inputEEG)
      elseif  regexp(in_type,'4_10')
   	   ncores=16;
      else
-  	   ncores=20;
+  	   ncores=24;
      end
   end
 end
