@@ -10,11 +10,11 @@
 # 20241116WF - remove double run; add EPOCH and LENGTH (as sbatch_entropy.bash)
 
 [ ! -r "$INPUTFILE" ] && echo "ERROR: $0: no '$INPUTFILE'" && exit 1
-! [[ "${EPOCH}" =~ delay|fix ]] && echo "ERROR: $0: epoch '$EPOCH' not 'delay' or 'fix'" && exit 1
+! [[ "${EPOCH}" =~ delay|fix|NA ]] && echo "ERROR: $0: epoch '$EPOCH' not 'delay' or 'fix'" && exit 1
 [ -z "$LENGTH" ] && echo "ERROR: $0: \$LENGHT not set" && exit 1
 
 # matlab will test if file doesn't exit
-cmd="try, run_Entropy_PSC('$INPUTFILE','MGS', '$EPOCH', $LENGTH); catch e, disp(e), end; quit"
+cmd="try, run_Entropy_PSC('$INPUTFILE','$TASK', '$EPOCH', $LENGTH); catch e, disp(e), end; quit"
 echo "# [$(date)] $0 running $cmd in matlab"
 module load matlab
 matlab -nosplash -nodesktop -r "$cmd"

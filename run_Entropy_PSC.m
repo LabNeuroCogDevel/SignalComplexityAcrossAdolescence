@@ -21,10 +21,10 @@ fprintf('running on %s. %s saving to %s\n', hostname, inputfile, resultPath)
 eeglab
 ft_defaults
 
-if task == 'MGS'
+if  strcmp(task, 'MGS')
     resultFolder = 'MGS_Entropy';
-elseif task == 'rest'
-    resultFolder = 'entropy';
+elseif  strcmp(task, 'Resting_State')
+    resultFolder = 'Rest_Entropy';
 end
 
 
@@ -220,6 +220,12 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
 
         % Remove boundary events from EEG.event structure
         EEGclosedeyes.event(boundary_indices) = [];
+	
+	if (length(EEGclosedeyes.event) == length(EEG.event)) || (length(EEGclosedeyes.event) < 50)
+	       	disp("too few triggers")
+               	return; % Move to next person in the loop if no events were removed
+        end
+
 
         [subjectTable] = Calculate_EEG_Entropy_Values_wf(EEGclosedeyes);
 
@@ -230,7 +236,7 @@ elseif strcmp(task, 'MGS') && strcmp(epoch, 'fix')
         subjectTable = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subjectTable];
 
 
-        subjectSavePath = [savePath 'timeScale20/eyesClosed/' currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'];
+        subjectSavePath = [savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'];
         writetable(subjectTable, subjectSavePath);
 
 
