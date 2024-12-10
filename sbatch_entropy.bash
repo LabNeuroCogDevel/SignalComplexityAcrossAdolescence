@@ -2,7 +2,7 @@
 #SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=24
-#SBATCH -p RM-shared
+#SBATCH -p EM
 
 # Bash script for running MSE on the supercomputer for the Entropy project
 #

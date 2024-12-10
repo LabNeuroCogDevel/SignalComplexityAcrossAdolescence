@@ -21,6 +21,7 @@ if ncores>1
       Mobj = MSobject("SampEn");
       [MSx(c,:), Ci(:,c)] = MSEn(inputEEG.data(c,:), Mobj, 'Scales', 20, 'Methodx', 'coarse', 'RadNew', 0, 'Plotx', false);
   end
+  delete(gcp);
 else
   for c = 1:size(inputEEG.data, 1)
       % t = datetime('now','TimeZone','local','Format','YYYY-MM-DD HH:mm:ss Z')
@@ -42,4 +43,4 @@ clear MSx
 clear Ci
 
 
-delete(gcp);
+

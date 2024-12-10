@@ -13,7 +13,7 @@ function ncores = ncores_from_input(inputEEG)
      % ~880Gb need for 20 at once for delay len = 6
      in_type = inputEEG.event(1).type; % inputEEG.setname
      if regexp(in_type,'2')
-  	   ncores=1;
+  	   ncores=24;
      elseif  regexp(in_type,'4_6')
   	   ncores=21;
      elseif  regexp(in_type,'4_8')
