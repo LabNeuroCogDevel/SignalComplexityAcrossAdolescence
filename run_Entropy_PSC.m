@@ -214,7 +214,7 @@ elseif strcmp(task, 'Resting_State')
 
     if ~isfile([savePath currentName(1:14) '_MultiScaleEntropy_eyesClosed.csv'])
         
-        EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','0'},[0 4] ,0);
+        EEGclosedeyes = pop_rmdat(EEG, {'16129', '15261','15361','0'},[0 4] ,0);
 
         % Find indices of boundary events
         boundary_indices = find(strcmp({EEGclosedeyes.event.type}, 'boundary'));
