@@ -1,0 +1,244 @@
+---
+title: "DevelopmentalEffects"
+author: "Shane Devine McKeon"
+output: html_document
+date: "2025-02-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+
+
+```
+
+# ACW by age
+```{r}
+avgACW_allEpochs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_allEpochs_regions.csv') %>% filter(epoch == 'Delays' | epoch == 'restEyesOpen')
+
+annotation_data <- data.frame(
+  region = c("Frontal", "Occipital", "Parietal"),
+  age = c(35.5, 35.5, 35.5),  # Adjust x-position
+  Var1 = c(0.026, 0.026, 0.026),  # Adjust y-position
+  label = c("***", "***", "***")  # Custom text for each facet
+)
+
+lunaize(ggplot(data = avgACW_allEpochs, aes(x = age, y = ACW_50, color=region, linetype=epoch))) + geom_point(aes(shape=epoch), alpha =0.3) +
+  geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2) +
+  geom_smooth(aes(group=epoch), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5)+ facet_wrap(~region)+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + 
+  geom_text(
+    data = annotation_data, 
+    aes(x = age, y = Var1, label = label),  
+    size = 10,
+    inherit.aes = FALSE  # Ensures text is placed correctly per facet
+  )
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAcrossAge.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+avgACW_allEpochs$lunaid <- as.factor(avgACW_allEpochs$lunaid)
+avgACW_allEpochs$epoch <- as.factor(avgACW_allEpochs$epoch)
+avgACW_allEpochs$region <- as.factor(avgACW_allEpochs$region)
+
+# Delay stats
+avgACW_allDelays_avg <- avgACW_allEpochs %>% filter(epoch == 'Delays')
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_allDelays_avg %>% filter(region == 'Frontal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_allDelays_avg %>% filter(region == 'Occipital'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_allDelays_avg %>% filter(region == 'Parietal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+# rest only stats
+avgACW_rest <- avgACW_allEpochs %>% filter(epoch == 'restEyesOpen')
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_rest %>% filter(region == 'Frontal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_rest %>% filter(region == 'Occipital'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex , data = avgACW_rest %>% filter(region == 'Parietal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+# delay and rest stats
+avgACW_allEpochs$region <- factor(avgACW_allEpochs$region, ordered=T)
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3, by=region) + sex + region + epoch, data = avgACW_allEpochs, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Occipital'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Frontal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Parietal'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+p.adjust(0.000665, method = "bonferroni", n = 3)
+
+
+
+
+gratia::draw(gam.model$gam)
+plot(gam.model$gam)
+
+predicted_data <- ggpredict(gam.model, terms = c("region", "age", "epoch"))  # Ensure correct term order
+
+# Extract ggplot object from ggpredict
+lunaize(plot(predicted_data) + 
+  scale_color_manual(values = c("#012b0d", "#27763d", "#90b8a6")) +  # Custom line colors
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#90b8a6")) +   # Custom confidence interval fills
+  theme_minimal() +
+  labs(x = "Region", y = "Predicted Value", color = "Age", fill = "Age"))
+
+
+
+
+```
+
+# Age of maturation 
+```{r}
+
+####  ACW Rate of maturation ----
+
+epochs <- unique(avgACW_allEpochs$epoch)
+regions <- unique(avgACW_allEpochs$region)
+avgACW_allEpochs$lunaid <- as.factor(avgACW_allEpochs$lunaid)
+avgACW_allEpochs$epoch <- as.factor(avgACW_allEpochs$epoch)
+
+# Initialize lists to store results
+gamstats_list <- list()
+gamderivatives_list <- list()
+gammodel_list <- list()
+
+# Loop through each combination of epoch and region
+for (task in epochs) {
+  for (loc in regions) {
+    
+    # Apply the growthrate function for each combination
+    allstats <- growthrate(avgACW_allEpochs %>% 
+                             filter(epoch == task & region == loc),
+                           'ACW_50', 'age')
+    
+    # Create a data frame of stats and add epoch  info
+    gamstats <- allstats$gam.statistics %>% 
+      mutate(epoch = task) %>%
+      mutate(region = loc)
+    
+    # Create a data frame of derivatives and add epoch info
+    gamderivatives <- allstats$gam.derivatives %>% 
+      mutate(epoch = task) %>%
+      mutate(region = loc)
+    
+    
+    # Store results
+    gamstats_list[[paste(task,loc, sep = "_")]] <- gamstats
+    gamderivatives_list[[paste(task, loc, sep = "_")]] <- gamderivatives
+    gammodel_list[[paste(task, loc, sep = "_")]] <- allstats$model
+    
+  }
+}
+
+# Combine results into data frames (if desired)
+gamstats_combined <- bind_rows(gamstats_list, .id = "epoch_region") %>%
+  separate(epoch_region, into = c("epoch", "region"), sep = "_", remove = TRUE)
+
+gamderivatives_combined <- bind_rows(gamderivatives_list, .id = "epoch_region") %>%
+  separate(epoch_region, into = c("epoch", "region"), sep = "_", remove = TRUE)
+
+epoch.rate <- gamderivatives_combined %>% group_by(epoch, region) %>% do(rate = mean(.$derivative)) %>% unnest(cols = "rate")
+
+epoch.rate %>% 
+  ggplot(aes(x = rate, y = epoch, fill = region)) +
+  geom_point(shape = 23, size = 5.5) +
+  theme_classic() +
+  xlab("\nMean Derivative") +
+  ylab("epoch\n") +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +  # Custom line colors
+  scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestRateofMat.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+####  ACW Age of maturation ----
+
+epoch.age <- gamstats_combined %>% group_by(epoch, region) %>% do(age = mean(.$smooth.decrease.offset, na.rm = T)) %>% unnest(cols = "age") 
+
+epoch.age %>% 
+  ggplot(aes(x = age, y = epoch, fill = region)) +
+  geom_point(shape = 23, size = 5.5, position=position_jitter(width=0.3, height=0)) +
+  theme_classic() +
+  xlab("\nAge of Maturation") +
+  ylab("epoch\n") +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +  # Custom line colors
+  scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAgeofMat.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+epoch.age %>% 
+  ggplot(aes(y = age, ymin = 15, x = epoch, ymax = age, group = region, color = region)) +
+  geom_linerange(position = position_dodge(0.5), linewidth = 3) +
+  scale_y_continuous(breaks = c(16, 18, 20, 22, 24, 26, 28, 30, 32)) +
+  ylab("\nAge of Maturation") +
+  xlab("Epoch\n") +
+  coord_flip() +
+  theme_classic() +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d"))+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAgeofMatLines.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+```

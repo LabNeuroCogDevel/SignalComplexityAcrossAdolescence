@@ -1,0 +1,252 @@
+---
+title: "taskVsRest"
+author: "Shane McKeon"
+date: "2025-02-18"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+
+
+```
+# load dataframe
+```{r}
+
+avgACW_allEpochs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_allEpochs_regions.csv') %>% 
+  filter(epoch == 'Delays' | epoch == 'restEyesOpen' | epoch == 'Fix') %>%
+  select(-ACW_0)
+```
+
+# Compare delay and fix
+```{r}
+
+lunaize(
+  ggplot(data = avgACW_allEpochs  %>% 
+  filter(epoch == 'Delays' | epoch == 'Fix'), 
+         aes(x = epoch, y = ACW_50, fill = interaction(epoch))) +
+    geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width=0.35) +
+  geom_line(aes(group= interaction(lunaid)), alpha = 0.2, linewidth=0.1) +
+    labs(x = "Epoch", y = "ACW", fill = "Task") +
+    theme_minimal()
+) + scale_fill_manual(values = c("#012b0d", "#27763d", "#90b8a6")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) + facet_wrap(~region)
+
+wide <- avgACW_allEpochs %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+# No sig differences between delay and fix in a pairwise t test 
+t.test(wide$Delays_Frontal, wide$Fix_Frontal, paired = TRUE)
+t.test(wide$Delays_Occipital, wide$Fix_Occipital, paired = TRUE)
+t.test(wide$Delays_Parietal, wide$Fix_Parietal, paired = TRUE)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_delayFix_boxplot_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+# across age they are basically on top of each other
+
+lunaize(ggplot(data = avgACW_allEpochs  %>% 
+  filter(epoch == 'Delays' | epoch == 'Fix'), aes(x = age, y = ACW_50, color=region, linetype=epoch))) + geom_point(aes(shape=epoch), alpha =0.3) +
+  geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2) +
+  geom_smooth(aes(group=epoch), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5)+ facet_wrap(~region)+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_delayFix_acrossAge_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+```
+
+# average delay and fix to represent a overall "task state"
+```{r}
+task = avgACW_allEpochs  %>% filter(epoch == 'Delays' | epoch == 'Fix')
+
+task_avg <- task %>%
+  group_by(lunaid, region, age, sex, visitno) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+# task state ACW decreases across age 
+
+lunaize(ggplot(data = task_avg, aes(x = age, y = ACW_50, color=region))) + geom_point(alpha =0.3) +
+  geom_line(aes(group= interaction(lunaid)), alpha = 0.2) +
+  geom_smooth(aes(group=1), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5)+ facet_wrap(~region)+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_task_acrossAge_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+task_avg$region <- factor(task_avg$region, ordered=T)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + region , data = task_avg, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+# frontal is sig diff than occipital and parietal 
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 4) + s(age, k = 4, by=region) + sex + region , data = task_avg, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+```
+
+# task vs rest boxplot
+```{r}
+task_avg$epoch <- as.factor("Task")
+task_rest <- rbind(task_avg,  avgACW_allEpochs %>% filter(epoch == 'restEyesOpen'))
+task_rest$epoch <- as.factor(task_rest$epoch)
+
+task_rest$epochRev <- factor(task_rest$epoch, levels = rev(levels(task_rest$epoch)))
+write.csv(task_rest, file = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/taskRest.csv')
+
+lunaize(ggplot(data = task_rest, aes(x = ageGroup, y = ACW_50, fill = interaction(factor(epoch, levels = c("restEyesOpen", "Task"))))) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "Task") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#012b0d", "#27763d", "#012b0d", "#27763d"))) + 
+  theme(
+    legend.position = 'none',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white')) + 
+  facet_wrap(~factor(region, levels = c("Frontal", "Parietal", "Occipital")))
+
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_taskRest_boxplots_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+wide <- task_rest %>% select(-epochRev) %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+# sig diff between task and rest in parietal and occipital (basically the same results as with just rest)
+t.test(wide$Task_Frontal, wide$restEyesOpen_Frontal, paired = TRUE)
+t.test(wide$Task_Occipital, wide$restEyesOpen_Occipital, paired = TRUE)
+t.test(wide$Task_Parietal, wide$restEyesOpen_Parietal, paired = TRUE)
+
+
+```
+
+# task vs rest boxplot age groups
+```{r}
+lunaize(ggplot(data = task_rest, aes(x = epochRev, y = ACW_50, fill = interaction(ageGroup))) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "Task") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#012b0d", "#27763d", "#012b0d", "#27763d")) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2)
+  ) + 
+  facet_wrap(~region))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_taskRest_boxplots_regions_adolAdults.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+wide <- task_rest %>% select(-epochRev) %>% filter(ageGroup == 'Adults') %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+
+# sig diff between task and rest in parietal and occipital (basically the same results as with just rest) in adults ONLY
+
+t.test(wide$Task_Frontal, wide$restEyesOpen_Frontal, paired = TRUE)
+t.test(wide$Task_Occipital, wide$restEyesOpen_Occipital, paired = TRUE)
+t.test(wide$Task_Parietal, wide$restEyesOpen_Parietal, paired = TRUE)
+
+
+wide <- task_rest %>% select(-epochRev) %>% filter(ageGroup == 'Adol') %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+
+# sig diff between task and rest in parietal and occipital (basically the same results as with just rest) in adults ONLY
+
+t.test(wide$Task_Frontal, wide$restEyesOpen_Frontal, paired = TRUE)
+t.test(wide$Task_Occipital, wide$restEyesOpen_Occipital, paired = TRUE)
+t.test(wide$Task_Parietal, wide$restEyesOpen_Parietal, paired = TRUE)
+
+
+
+```
+
+```{r}
+lunaize(ggplot(data = task_rest, aes(x = age, y = ACW_50, color=region, linetype=epoch))) + geom_point(aes(shape=epoch), alpha =0.3) +
+  geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2) +
+  geom_smooth(aes(group=epoch), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.5, linewidth = 1.5)+ facet_wrap(~region)+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + facet_wrap(~region)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure4/INT_taskRest_acrossAge_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+task_rest$region <- factor(task_rest$region, ordered=T)
+
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + region + epoch, data = task_rest, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+# frontal is sig diff than occipital and parietal 
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 4) + s(age, k = 4, by=region) + sex + region + epoch , data = task_rest, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+
+task_rest$epoch <- factor(task_rest$epoch, ordered=T)
+
+# task is sig diff than rest 
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 4) + s(age, k = 4, by=epoch) + sex + region + epoch , data = task_rest, random=list(lunaid=~1))
+summary(gam.model$gam)
+
+```

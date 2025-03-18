@@ -1,0 +1,89 @@
+function calculate_MSE(inputEEG, subject, resultPath, resultFolder, epoch, lengthValue, segmentLength)
+
+
+if segmentLength == 1
+
+    subTable = table();
+    allSecsTable = table();
+
+    for t = 1:size(inputEEG.data,3)
+        % select the one second sections of the trial
+        for startTime = 0:1:(lengthValue-1)
+            endTime = startTime+1;
+            secondTrialData = pop_select(inputEEG, 'time', [startTime endTime], 'trial', t);
+
+            % run the entropy on the 1 sec that that trial
+            for c = 1:size(inputEEG.data, 1)
+                Mobj = MSobject("SampEn");
+                [MSx(c,:), Ci(:,c)] = MSEn(secondTrialData.data(c,:), Mobj, 'Scales', 20, 'Methodx', 'modified', 'RadNew', 0, 'Plotx', false);
+            end
+
+            MSxTable = array2table(MSx);
+            CiTable = array2table(Ci');
+
+            secondsEpoch = repmat({sprintf('%d-%d', startTime, endTime)}, c, 1);
+            secondsEpochTable = table(secondsEpoch, 'VariableNames', {'secondsEpoch'});
+
+            trialNum = repmat({sprintf('%d', t)}, c, 1);
+            trialNumTable = table(trialNum, 'VariableNames', {'trial'});
+
+            channelNum = (1:64)';
+            channelNumTable = table(channelNum, 'VariableNames', {'channel'});
+
+            secondTrialTable = horzcat(MSxTable, CiTable,  channelNumTable, secondsEpochTable, trialNumTable);
+            allSecsTable = vertcat(allSecsTable, secondTrialTable);
+
+        end
+        subTable = vertcat(subTable, allSecsTable);
+    end
+
+
+elseif segmentLength == 2
+
+    subTable = table();
+    allSecsTable = table();
+
+    for t = 1:size(inputEEG.data,3)
+        % select the one second sections of the trial
+        for startTime = 0:2:(lengthValue-2)
+            endTime = startTime+2;
+            secondTrialData = pop_select(inputEEG, 'time', [startTime endTime], 'trial', t);
+
+            % run the entropy on the 1 sec that that trial
+            parfor c = 1:size(inputEEG.data, 1)
+                Mobj = MSobject("SampEn");
+                [MSx(c,:), Ci(:,c)] = MSEn(secondTrialData.data(c,:), Mobj, 'Scales', 20, 'Methodx', 'modified', 'RadNew', 0, 'Plotx', false);
+            end
+
+            MSxTable = array2table(MSx);
+            CiTable = array2table(Ci');
+
+            secondsEpoch = repmat({sprintf('%d-%d', startTime, endTime)}, size(inputEEG.data, 1), 1);
+            secondsEpochTable = table(secondsEpoch, 'VariableNames', {'secondsEpoch'});
+
+            trialNum = repmat({sprintf('%d', t)}, size(inputEEG.data, 1), 1);
+            trialNumTable = table(trialNum, 'VariableNames', {'trial'});
+
+            channelNum = (1:64)';
+            channelNumTable = table(channelNum, 'VariableNames', {'channel'});
+
+            secondTrialTable = horzcat(MSxTable, CiTable,  channelNumTable, secondsEpochTable, trialNumTable);
+            allSecsTable = vertcat(allSecsTable, secondTrialTable);
+
+        end
+        subTable = vertcat(subTable, allSecsTable);
+    end
+
+end
+
+
+% Create a new column with subject ID repeated for every row
+subjectIDColumn = repmat(subject, size(subTable, 1),1);
+
+% Add the new column to the existing table
+subjectTableCols = [table(subjectIDColumn, 'VariableNames', {'Subject'}), subTable];
+
+subjectSavePath = [savePath subject '_MultiScaleEntropy_' epoch num2str(lengthValue) '.csv'];
+
+writetable(subjectTableCols, subjectSavePath);
+

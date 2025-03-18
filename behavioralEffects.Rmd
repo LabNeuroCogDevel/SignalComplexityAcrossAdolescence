@@ -1,0 +1,995 @@
+---
+title: "behavioralEffects"
+author: "Shane McKeon"
+date: "2025-02-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+library(kableExtra)
+
+
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+conflicted::conflicts_prefer(lme4::lmer)
+
+source("/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/code/behavioralStats.R")
+
+```
+
+```{r}
+# Load dataframes ----
+merge7t <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/txt/merged_7t.csv')
+behav <- merge7t[c("lunaid","eeg.date", "visitno","eeg.age", "eeg.vgsLatency_DelayAll","eeg.BestError_DelayAll", "eeg.BestError_sd_DelayAll","eeg.mgsLatency_DelayAll", "eeg.mgsLatency_sd_DelayAll","cantab.ssp_max.span","cantab.ssp_nerrors", "cantab.ssp_ntrials")]
+colnames(behav) <- c("lunaid","visitdate", "visitno","age","vgsLatency","absBestError","absBestError_sd","mgsLatency","mgsLatency_sd", "SSP_maxSpan", "SSP_nErrors", "SSP_nTrials")
+task_rest <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/taskRest.csv')
+
+# MSE ----
+ACW_behav <- merge(task_rest, behav, by = c("lunaid", "visitno", "age")) %>% filter(epoch != 'restEyesClosed') %>% select(-epochRev)
+
+```
+
+# Best Error
+## Frontal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+
+FrontalInteractionStats <- behavioralInteraction(ACW_behav,'Frontal', 'ACW_50', 'absBestError')
+summary(FrontalInteractionStats$model)
+
+
+FrontalMainStats <- behavioralMainEffect(ACW_behav,'Frontal', 'ACW_50', 'absBestError')
+summary(FrontalMainStats$model)
+
+
+frontalinteraction.plotdata <- ggpredict(FrontalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, shape=epoch, color = '#012b0d'), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, group= interaction(lunaid, epoch), linetype=epoch,color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#012b0d'), data=frontalinteraction.plotdata, size = 2)+ 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_Frontal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+### TVEM
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+FrontalInteractionAgeStats <- behavioralAgeInteraction(ACW_behav,'Frontal', 'ACW_50', 'absBestError')
+summary(FrontalInteractionAgeStats$model)
+
+frontalAgeinteraction.plotdata <- ggpredict(FrontalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence")
+
+plot(ggpredict(FrontalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence"), show_data = T)
+
+cuts <- as.numeric(as.character(unique(frontalAgeinteraction.plotdata$group)))
+ACW_behav <- ACW_behav %>% mutate(group = cut(ACW_50, breaks=c(0,cuts,Inf)))
+
+ derv <- derivatives(FrontalInteractionAgeStats$model, term = 'age', interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
+derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
+    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+  derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
+  mean.derivative <- mean(derv$.derivative)
+
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = age, y = absBestError, color="#012b0d"), alpha = 0.05) +
+          geom_line(data = ACW_behav_region, aes(x = age, y = absBestError, group= interaction(lunaid), color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          theme_minimal()+
+  geom_smooth(aes(x = x, y = predicted, group=group, linetype = group, color="#012b0d"), data=frontalAgeinteraction.plotdata, size = 2)+ 
+     scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "Age", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) + geom_vline(xintercept = 18.4, size = 2, alpha = 0.5, color ="#012b0d")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_Frontal_TVEM.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+ 
+```
+
+
+## Parietal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Parietal')
+
+ParietalInteractionStats <- behavioralInteraction(ACW_behav,'Parietal', 'ACW_50', 'absBestError')
+summary(ParietalInteractionStats$model)
+
+ParietalMainStats <- behavioralMainEffect(ACW_behav,'Parietal', 'ACW_50', 'absBestError')
+summary(ParietalMainStats$model)
+
+parietalinteraction.plotdata <- ggpredict(ParietalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, shape=epoch, color = "#27763d"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, group= interaction(lunaid, epoch), linetype=epoch, color = "#27763d"), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#27763d'), data=parietalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#27763d"), guide='none') + 
+  scale_fill_manual(values = c("#27763d"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_parietal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+### TVEM
+```{r}
+ACW_behav_region <- ACW_behav %>% filter(region == 'Parietal')
+
+ParietalInteractionAgeStats <- behavioralAgeInteraction(ACW_behav,'Parietal', 'ACW_50', 'absBestError')
+summary(ParietalInteractionAgeStats$model)
+
+parietalAgeinteraction.plotdata <- ggpredict(ParietalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence")
+
+derv <- derivatives(ParietalInteractionAgeStats$model, term = 'age', interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
+derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
+  mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
+mean.derivative <- mean(derv$.derivative)
+
+plot(ggpredict(ParietalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence"), show_data = T)
+
+cuts <- as.numeric(as.character(unique(parietalAgeinteraction.plotdata$group)))
+ACW_behav_cut <- ACW_behav %>% mutate(groupColor = cut(ACW_50, breaks=c(0,cuts,Inf)))
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = age, y = absBestError, color="#27763d"), alpha = 0.05) +
+          geom_line(data = ACW_behav_region, aes(x = age, y = absBestError, group= interaction(lunaid), color='#27763d'), alpha = 0.2, linewidth=0.1)+
+          theme_minimal()+
+  geom_smooth(aes(x = x, y = predicted, group=group, linetype = group, color="#27763d"), data=frontalAgeinteraction.plotdata, size = 2)+ 
+     scale_color_manual(values = c("#27763d"), guide='none') + 
+  scale_fill_manual(values = c("#27763d"), guide='none') + 
+    labs(x = "Age", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))+ geom_vline(xintercept = 18.2, size = 2, alpha = 0.5, color='#27763d')
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_Parietal_TVEM.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+## Occipital
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Occipital')
+
+OccipitalInteractionStats <- behavioralInteraction(ACW_behav,'Occipital', 'ACW_50', 'absBestError')
+summary(OccipitalInteractionStats$model)
+
+OccipitalMainStats <- behavioralMainEffect(ACW_behav,'Occipital', 'ACW_50', 'absBestError')
+summary(OccipitalMainStats$model)
+
+occipitalinteraction.plotdata <- ggpredict(OccipitalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, shape=epoch, color = "#90b8a6"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError, group= interaction(lunaid, epoch), linetype=epoch, color = "#90b8a6"), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#90b8a6'), data=occipitalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#90b8a6"), guide='none') + 
+  scale_fill_manual(values = c("#90b8a6"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_Occipital.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+
+```{r}
+
+# Combine all regions
+frontalinteraction.plotdata$region <- 'Frontal'
+parietalinteraction.plotdata$region <- 'Parietal'
+occipitalinteraction.plotdata$region <- 'Occipital'
+
+allplotdata <- bind_rows(frontalinteraction.plotdata, occipitalinteraction.plotdata, parietalinteraction.plotdata)
+
+lunaize(ggplot( ) +
+          geom_point(data = ACW_behav, aes(x = ACW_50, y = absBestError, shape=epoch, color = region), alpha = 0.5) + 
+          geom_line(data = ACW_behav, aes(x = ACW_50, y = absBestError, group= interaction(lunaid, epoch), linetype=epoch, color = region), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white")) + facet_wrap(~region)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_regions.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+```
+
+``` {r}
+
+lunaize(ggplot( ) +
+          geom_point(data = ACW_behav, aes(x = ACW_50, y = absBestError, shape=epoch, color = region), alpha = 0.5) + 
+          geom_line(data = ACW_behav, aes(x = ACW_50, y = absBestError, group= interaction(lunaid, epoch, region), linetype=epoch, color=region), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Accuracy (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white"))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracy_regionsTogether.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+## Look at interaction stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalInteractionStatsFixed <- FrontalInteractionStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalInteractionStatsFixed <- OccipitalInteractionStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalInteractionStatsFixed <- ParietalInteractionStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalInteractionStatsFixed, OccipitalInteractionStatsFixed, ParietalInteractionStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+
+
+
+
+# Extract and label smoothed effects from each region
+FrontalInteractionStatsSmooth <- FrontalInteractionStats$smoothedResults %>% mutate(Region = 'Frontal')
+OccipitalInteractionStatsSmooth <- OccipitalInteractionStats$smoothedResults %>% mutate(Region = 'Occipital')
+ParietalInteractionStatsSmooth <- ParietalInteractionStats$smoothedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalInteractionStatsSmooth, OccipitalInteractionStatsSmooth, ParietalInteractionStatsSmooth)
+
+# Extract p-values
+allstats$pvalue <- allstats$`p-value`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$pvalue * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+```
+
+
+## Look at main effect stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalMainStatsFixed <- FrontalMainStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalMainStatsFixed <- OccipitalMainStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalMainStatsFixed <- ParietalMainStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalMainStatsFixed, OccipitalMainStatsFixed, ParietalMainStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+
+```
+
+
+
+# Best Error Var
+## Frontal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+FrontalInteractionStats <- behavioralInteraction(ACW_behav,'Frontal', 'ACW_50', 'absBestError_sd')
+summary(FrontalInteractionStats$model)
+
+FrontalMainStats <- behavioralMainEffect(ACW_behav, 'Frontal', 'ACW_50', 'absBestError_sd')
+summary(FrontalMainStats$model)
+
+frontalinteraction.plotdata <- ggpredict(FrontalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, shape=epoch, color = '#012b0d'), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, group= interaction(lunaid, epoch), linetype=epoch,color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#012b0d'), data=frontalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy Var (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracyVar_Frontal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+
+## Parietal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Parietal')
+
+ParietalInteractionStats <- behavioralInteraction(ACW_behav,'Parietal', 'ACW_50', 'absBestError_sd')
+summary(ParietalInteractionStats$model)
+
+ParietalMainStats <- behavioralMainEffect(ACW_behav,'Parietal', 'ACW_50', 'absBestError_sd')
+summary(ParietalMainStats$model)
+
+parietalinteraction.plotdata <- ggpredict(ParietalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, shape=epoch, color = "#27763d"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, group= interaction(lunaid, epoch), linetype=epoch, color = "#27763d"), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#27763d'), data=parietalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#27763d"), guide='none') + 
+  scale_fill_manual(values = c("#27763d"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy Var (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracyVar_parietal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+## Occipital
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Occipital')
+
+OccipitallInteractionStats <- behavioralInteraction(ACW_behav,'Occipital', 'ACW_50', 'absBestError_sd')
+summary(OccipitallInteractionStats$model)
+
+OccipitalMainStats <- behavioralMainEffect(ACW_behav,'Occipital', 'ACW_50', 'absBestError_sd')
+summary(OccipitalMainStats$model)
+
+occipitalinteraction.plotdata <- ggpredict(OccipitallInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, shape=epoch, color = "#90b8a6"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = absBestError_sd, group= interaction(lunaid, epoch), linetype=epoch, color = "#90b8a6"), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#90b8a6'), data=occipitalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#90b8a6"), guide='none') + 
+  scale_fill_manual(values = c("#90b8a6"), guide='none') + 
+    labs(x = "ACW", y = "Accuracy Var (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracyVar_Occipital.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+```{r}
+
+# Combine all regions
+frontalinteraction.plotdata$region <- 'Frontal'
+parietalinteraction.plotdata$region <- 'Parietal'
+occipitalinteraction.plotdata$region <- 'Occipital'
+
+allplotdata <- bind_rows(frontalinteraction.plotdata, occipitalinteraction.plotdata, parietalinteraction.plotdata)
+
+lunaize(ggplot( ) +
+          geom_point(data = ACW_behav, aes(x = ACW_50, y = absBestError_sd, shape=epoch, color = region), alpha = 0.5) + 
+          geom_line(data = ACW_behav, aes(x = ACW_50, y = absBestError_sd, group= interaction(lunaid, epoch), linetype=epoch, color = region), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Accuracy Var (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white")) + facet_wrap(~region)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracyVar_regions.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+```
+
+``` {r}
+
+lunaize(ggplot( ) +
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Accuracy Var (degs)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white"))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_accuracyVar_regionsTogether.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+## Look at interaction stats
+
+```{r}
+# Extract and label fixed effects from each region
+FrontalInteractionStatsFixed <- FrontalInteractionStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalInteractionStatsFixed <- OccipitalInteractionStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalInteractionStatsFixed <- ParietalInteractionStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalInteractionStatsFixed, OccipitalInteractionStatsFixed, ParietalInteractionStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+```
+
+## Look at main effect stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalMainStatsFixed <- FrontalMainStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalMainStatsFixed <- OccipitalMainStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalMainStatsFixed <- ParietalMainStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalMainStatsFixed, OccipitalMainStatsFixed, ParietalMainStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+
+```
+
+# Latency
+## Frontal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+FrontalInteractionStats <- behavioralInteraction(ACW_behav,'Frontal', 'ACW_50', 'mgsLatency')
+summary(FrontalInteractionStats$model)
+
+FrontalMainStats <- behavioralMainEffect(ACW_behav, 'Frontal', 'ACW_50', 'mgsLatency')
+summary(FrontalMainStats$model)
+
+frontalinteraction.plotdata <- ggpredict(FrontalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, shape=epoch, color = '#012b0d'), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, group= interaction(lunaid, epoch), linetype=epoch,color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#012b0d'), data=frontalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "ACW", y = "Latency")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_Latency_Frontal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+
+## Parietal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Parietal')
+
+ParietalInteractionStats <- behavioralInteraction(ACW_behav,'Parietal', 'ACW_50', 'mgsLatency')
+summary(ParietalInteractionStats$model)
+
+ParietalMainStats <- behavioralMainEffect(ACW_behav, 'Parietal', 'ACW_50', 'mgsLatency')
+summary(ParietalMainStats$model)
+
+parietalinteraction.plotdata <- ggpredict(ParietalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, shape=epoch, color = "#27763d"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, group= interaction(lunaid, epoch), linetype=epoch, color = "#27763d"), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#27763d'), data=parietalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#27763d"), guide='none') + 
+  scale_fill_manual(values = c("#27763d"), guide='none') + 
+    labs(x = "ACW", y = "Latency")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_Latency_parietal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+## Occipital
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Occipital')
+
+OccipitalInteractionStats <- behavioralInteraction(ACW_behav,'Occipital', 'ACW_50', 'mgsLatency')
+summary(OccipitalInteractionStats$model)
+
+OccipitalMainStats <- behavioralMainEffect(ACW_behav, 'Occipital', 'ACW_50', 'mgsLatency')
+summary(OccipitalMainStats$model)
+
+occipitalinteraction.plotdata <- ggpredict(OccipitalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, shape=epoch, color = "#90b8a6"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency, group= interaction(lunaid, epoch), linetype=epoch, color = "#90b8a6"), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#90b8a6'), data=occipitalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#90b8a6"), guide='none') + 
+  scale_fill_manual(values = c("#90b8a6"), guide='none') + 
+    labs(x = "ACW", y = "Latency")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_Latency_Occipital.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+
+```{r}
+
+# Combine all regions
+frontalinteraction.plotdata$region <- 'Frontal'
+parietalinteraction.plotdata$region <- 'Parietal'
+occipitalinteraction.plotdata$region <- 'Occipital'
+
+allplotdata <- bind_rows(frontalinteraction.plotdata, occipitalinteraction.plotdata, parietalinteraction.plotdata)
+
+lunaize(ggplot( ) +
+          geom_point(data = ACW_behav, aes(x = ACW_50, y = mgsLatency, shape=epoch, color = region), alpha = 0.5) + 
+          geom_line(data = ACW_behav, aes(x = ACW_50, y = mgsLatency, group= interaction(lunaid, epoch), linetype=epoch, color = region), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Latency (s)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white")) + facet_wrap(~region)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_latency_regions.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+```
+
+``` {r}
+
+lunaize(ggplot( ) +
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Latency (s)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white"))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_Latency_regionsTogether.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+## Look at interaction stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalInteractionStatsFixed <- FrontalInteractionStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalInteractionStatsFixed <- OccipitalInteractionStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalInteractionStatsFixed <- ParietalInteractionStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalInteractionStatsFixed, OccipitalInteractionStatsFixed, ParietalInteractionStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+```
+
+## Look at main effect stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalMainStatsFixed <- FrontalMainStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalMainStatsFixed <- OccipitalMainStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalMainStatsFixed <- ParietalMainStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalMainStatsFixed, OccipitalMainStatsFixed, ParietalMainStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+
+```
+
+# Latency Var
+## Frontal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+FrontalInteractionStats <- behavioralInteraction(ACW_behav,'Frontal', 'ACW_50', 'mgsLatency_sd')
+summary(FrontalInteractionStats$model)
+
+FrontalMainStats <- behavioralMainEffect(ACW_behav, 'Frontal', 'ACW_50', 'mgsLatency_sd')
+summary(FrontalMainStats$model)
+
+
+frontalinteraction.plotdata <- ggpredict(FrontalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, shape=epoch, color = '#012b0d'), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, group= interaction(lunaid, epoch), linetype=epoch,color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#012b0d'), data=frontalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "ACW", y = "Latency Var")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_LatencyVar_Frontal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+### TVEM
+```{r}
+ACW_behav_region <- ACW_behav %>% filter(region == 'Frontal')
+
+FrontalInteractionAgeStats <- behavioralAgeInteraction(ACW_behav,'Frontal', 'ACW_50', 'mgsLatency_sd')
+summary(FrontalInteractionAgeStats$model)
+
+frontalAgeinteraction.plotdata <- ggpredict(FrontalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence")
+
+ derv <- derivatives(FrontalInteractionAgeStats$model, term = 'age', interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
+derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
+    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+  derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
+  mean.derivative <- mean(derv$.derivative)
+
+plot(ggpredict(FrontalInteractionAgeStats$model, terms = c("age" ,"ACW_50"), interval = "confidence"), show_data = T)
+
+cuts <- as.numeric(as.character(unique(frontalAgeinteraction.plotdata$group)))
+ACW_behav <- ACW_behav %>% mutate(group = cut(ACW_50, breaks=c(0,cuts,Inf)))
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = age, y = mgsLatency_sd, color="#012b0d"), alpha = 0.05) +
+          geom_line(data = ACW_behav_region, aes(x = age, y = mgsLatency_sd, group= interaction(lunaid), color='#012b0d'), alpha = 0.2, linewidth=0.1)+
+          theme_minimal()+
+  geom_smooth(aes(x = x, y = predicted, group=group, linetype = group, color="#012b0d"), data=frontalAgeinteraction.plotdata, size = 2)+ 
+     scale_color_manual(values = c("#012b0d"), guide='none') + 
+  scale_fill_manual(values = c("#012b0d"), guide='none') + 
+    labs(x = "Age", y = "Latency Var (s)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) + geom_vline(xintercept = 21.5, size = 2, alpha = 0.5, color="#012b0d")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_LatencyVar_Frontal_TVEM.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+
+## Parietal
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Parietal')
+
+ParietalInteractionStats <- behavioralInteraction(ACW_behav,'Parietal', 'ACW_50', 'mgsLatency_sd')
+summary(ParietalInteractionStats$model)
+
+ParietalMainStats <- behavioralMainEffect(ACW_behav, 'Parietal', 'ACW_50', 'mgsLatency_sd')
+summary(ParietalMainStats$model)
+
+
+parietalinteraction.plotdata <- ggpredict(ParietalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot( ) + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, shape=epoch, color = "#27763d"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, group= interaction(lunaid, epoch), linetype=epoch, color = "#27763d"), alpha = 0.2, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#27763d'), data=parietalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#27763d"), guide='none') + 
+  scale_fill_manual(values = c("#27763d"), guide='none') + 
+    labs(x = "ACW", y = "Latency Var")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_LatencyVar_parietal.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+## Occipital
+```{r}
+
+ACW_behav_region <- ACW_behav %>% filter(region == 'Occipital')
+
+OccipitalInteractionStats <- behavioralInteraction(ACW_behav,'Occipital', 'ACW_50', 'mgsLatency_sd')
+summary(OccipitalInteractionStats$model)
+
+OccipitalMainStats <- behavioralMainEffect(ACW_behav, 'Occipital', 'ACW_50', 'mgsLatency_sd')
+summary(OccipitalMainStats$model)
+
+occipitalinteraction.plotdata <- ggpredict(OccipitalInteractionStats$model, terms = c("ACW_50", "epoch"), interval = "confidence")
+
+lunaize(ggplot() + 
+          geom_point(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, shape=epoch, color = "#90b8a6"), alpha = 0.5) + 
+          geom_line(data = ACW_behav_region, aes(x = ACW_50, y = mgsLatency_sd, group= interaction(lunaid, epoch), linetype=epoch, color = "#90b8a6"), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, group=group, linetype=group, color='#90b8a6'), data=occipitalinteraction.plotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#90b8a6"), guide='none') + 
+  scale_fill_manual(values = c("#90b8a6"), guide='none') + 
+    labs(x = "ACW", y = "Latency Var")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_LatencyVar_Occipital.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+
+```{r}
+
+# Combine all regions
+frontalinteraction.plotdata$region <- 'Frontal'
+parietalinteraction.plotdata$region <- 'Parietal'
+occipitalinteraction.plotdata$region <- 'Occipital'
+
+allplotdata <- bind_rows(frontalinteraction.plotdata, occipitalinteraction.plotdata, parietalinteraction.plotdata)
+
+lunaize(ggplot( ) +
+          geom_point(data = ACW_behav, aes(x = ACW_50, y = mgsLatency_sd, shape=epoch, color = region), alpha = 0.5) + 
+          geom_line(data = ACW_behav, aes(x = ACW_50, y = mgsLatency_sd, group= interaction(lunaid, epoch), linetype=epoch, color = region), alpha = 0.7, linewidth=0.1)+
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Latency Var (s)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white")) + facet_wrap(~region)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_latencyVar_regions.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+```
+``` {r}
+
+lunaize(ggplot( ) +
+          geom_smooth(aes(x = x, y = predicted, color=region), data=allplotdata, size = 2) + 
+    theme_minimal()+ 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6",  "#27763d")) + 
+    labs(x = "ACW", y = "Latency Var (s)")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white"))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure5/ACW_LatencyVar_regionsTogether.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+```
+
+## Look at interaction stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalInteractionStatsFixed <- FrontalInteractionStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalInteractionStatsFixed <- OccipitalInteractionStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalInteractionStatsFixed <- ParietalInteractionStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalInteractionStatsFixed, OccipitalInteractionStatsFixed, ParietalInteractionStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+```
+
+## Look at main effect stats
+```{r}
+# Extract and label fixed effects from each region
+FrontalMainStatsFixed <- FrontalMainStats$fixedResults %>% mutate(Region = 'Frontal')
+OccipitalMainStatsFixed <- OccipitalMainStats$fixedResults %>% mutate(Region = 'Occipital')
+ParietalMainStatsFixed <- ParietalMainStats$fixedResults %>% mutate(Region = 'Parietal')
+
+# Combine all regions
+allstats <- bind_rows(FrontalMainStatsFixed, OccipitalMainStatsFixed, ParietalMainStatsFixed)
+
+# Extract p-values
+allstats$p_value <- allstats$`Pr(>|t|)`  # Ensure correct column name
+
+# Apply Bonferroni correction
+allstats$p_adj <- pmin(allstats$p_value * 3, 1)  # Adjusted p-values
+
+# Display results
+allstats %>%
+  kbl() %>%
+  kable_classic(full_width = F)
+
+```
+
+
+
+
+

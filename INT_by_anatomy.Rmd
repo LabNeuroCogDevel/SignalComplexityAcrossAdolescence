@@ -1,0 +1,154 @@
+---
+title: "INT_by_anatomy"
+author: "Shane Devine McKeon"
+output: html_document
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(eegkit)
+library(fields)
+library(scales)
+
+```
+
+# Delay Periods
+
+```{r}
+avgACW_allDelaysavg <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_allChannels_avgDelay.csv')
+chanLocs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/ChannelLocs.csv')
+names(chanLocs)[names(chanLocs) == "urchan"] <- "channel"
+
+avgACW_allDelaysavg <- merge(avgACW_allDelaysavg, chanLocs, by="channel")
+
+```
+
+```{r}
+
+myelectrodes <- c("Fp1", "AF1", "AF5", "F7", "F5", "F3", "F1", "FC1", "FC3", "FC5", "FT9", "T7", "C5", "C3", "C1", "CP1", "CP3", "CP5", "P9", "P7", "P5", "P3", "P1", "PO3", "PO7", "PO9", "O1", "I1", "Oz", "POz", "Pz", "CPz", "Fp2", "AFz", "AF2", "AF6", "F8", "F6", "F4", "F2", "Fz", "FCz", "FC2", "FC4", "FC6", "FT10", "T8", "C6", "C4", "C2", "Cz", "CP2", "CP4", "CP6", "P10", "P8", "P6", "P4", "P2", "PO4", "PO8", "PO10", "O2", "I2")
+
+INTvalues <-  avgACW_allDelaysavg %>%
+  group_by(labels)%>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE))
+
+# Sort INTvalues by ACW_50 and order by the electrode labels in 'myelectrodes'
+INTvalues_sorted <- INTvalues %>%
+  arrange(match(labels, myelectrodes))  # Ensures that the order matches 'myelectrodes'
+
+
+# Define a refined green gradient with more shades
+col_gradient <- colorRampPalette(c("#90b8a6", "#5a9b78", "#3f865c", "#27763d", "#155a27", "#012b0d"))
+
+# Assign colors based on ACW_50 values
+INTvalues_sorted <- INTvalues[match(myelectrodes, INTvalues$labels), ]  # Ensure sorting follows myelectrodes
+INTvalues_sorted$color <- col_gradient(nrow(INTvalues_sorted))[rank(INTvalues_sorted$ACW_50, ties.method = "first")]
+
+pdf("/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INTs_EEGtopoPlot.pdf", width = 5, height = 5)
+# Plot EEG with color-coded electrodes
+eegkit::eegcap(electrodes = myelectrodes,
+               col.point = INTvalues_sorted$color,  # Use sorted color mapping
+               cex.point = 3, nose = TRUE, ears = TRUE,
+               plotlabels = FALSE, plotaxes = FALSE, col.head = "grey",
+               type = "2d")
+dev.off()
+```
+
+```{r}
+
+# Create a color bar (legend)
+gradient_df <- data.frame(
+  x = rep(1, 100),
+  y = seq(min(INTvalues_sorted$ACW_50), max(INTvalues_sorted$ACW_50), length.out = 100),
+  color = col_gradient(100)
+)
+
+ggplot(gradient_df, aes(x = x, y = y, fill = color)) +
+  geom_tile() +
+  scale_fill_identity() +
+  theme_minimal() +
+  labs(y = "ACW_50 (Low → High)", x = "", title = "INT Value Gradient") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid = element_blank())
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INTs_Gradient.pdf", device = "pdf", dpi = 500, width = 2.42, height = 1.95)
+
+```
+
+
+# Resting State
+
+```{r}
+avgACW_allRestavg <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/Rest/allSubjects_avgTrials_allChans_rest.csv')
+chanLocs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/ChannelLocs.csv')
+
+avgACW_allRestavg <- merge(avgACW_allRestavg, chanLocs, by="labels") %>% dplyr::filter(epoch == 'restEyesOpen')
+
+```
+
+```{r}
+
+myelectrodes <- c("Fp1", "AF1", "AF5", "F7", "F5", "F3", "F1", "FC1", "FC3", "FC5", "FT9", "T7", "C5", "C3", "C1", "CP1", "CP3", "CP5", "P9", "P7", "P5", "P3", "P1", "PO3", "PO7", "PO9", "O1", "I1", "Oz", "POz", "Pz", "CPz", "Fp2", "AFz", "AF2", "AF6", "F8", "F6", "F4", "F2", "Fz", "FCz", "FC2", "FC4", "FC6", "FT10", "T8", "C6", "C4", "C2", "Cz", "CP2", "CP4", "CP6", "P10", "P8", "P6", "P4", "P2", "PO4", "PO8", "PO10", "O2", "I2")
+
+INTvalues <-  avgACW_allRestavg %>%
+  group_by(labels)%>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE))
+
+# Sort INTvalues by ACW_50 and order by the electrode labels in 'myelectrodes'
+INTvalues_sorted <- INTvalues %>%
+  arrange(match(labels, myelectrodes))  # Ensures that the order matches 'myelectrodes'
+
+
+# Define a refined green gradient with more shades
+col_gradient <- colorRampPalette(c("#90b8a6", "#5a9b78", "#3f865c", "#27763d", "#155a27", "#012b0d"))
+
+# Assign colors based on ACW_50 values
+INTvalues_sorted <- INTvalues[match(myelectrodes, INTvalues$labels), ]  # Ensure sorting follows myelectrodes
+INTvalues_sorted$color <- col_gradient(nrow(INTvalues_sorted))[rank(INTvalues_sorted$ACW_50, ties.method = "first")]
+
+# Plot EEG with color-coded electrodes
+eegkit::eegcap(electrodes = myelectrodes,
+               col.point = INTvalues_sorted$color,  # Use sorted color mapping
+               cex.point = 3, nose = TRUE, ears = TRUE,
+               plotlabels = FALSE, plotaxes = FALSE, col.head = "grey",
+               type = "2d")
+
+```
+
+```{r}
+
+# Create a color bar (legend)
+gradient_df <- data.frame(
+  x = rep(1, 100),
+  y = seq(min(INTvalues_sorted$ACW_50, na.rm=T), max(INTvalues_sorted$ACW_50, na.rm = T), length.out = 100),
+  color = col_gradient(100)
+)
+
+ggplot(gradient_df, aes(x = x, y = y, fill = color)) +
+  geom_tile() +
+  scale_fill_identity() +
+  theme_minimal() +
+  labs(y = "ACW_50 (Low → High)", x = "", title = "INT Value Gradient") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid = element_blank())
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INTs_Gradient_rest.pdf", device = "pdf", dpi = 500, width = 2.42, height = 1.95)
+
+```
