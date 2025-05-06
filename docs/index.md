@@ -18,7 +18,7 @@ In progress
 LNCD 7T
 
 ### Github Repository
-[https://github.com/LabNeuroCogDevel/7T_EEG/tree/main/Entropy](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/tree/main)
+[https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence)
 
 ## Code Documentation
 **Preprocessing:**
