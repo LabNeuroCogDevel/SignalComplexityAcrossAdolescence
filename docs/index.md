@@ -23,7 +23,7 @@ LNCD 7T
 ## Code Documentation
 **Preprocessing:**
 
-Preprocessing can be run using [01_Entropy_Preprocessing.sh](/LabNeuroCogDevel/7T_EEG/blob/main/Entropy/01_Entropy_Preprocessing.sh)
+Preprocessing can be run using [01_Entropy_Preprocessing.sh](/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/01_Entropy_Preprocessing.sh)
 
 Note this is the same preprocessing as the resting state data in the [Aperiodic EEG Project](https://labneurocogdevel.github.io/7T_EEG/fooofMRS.html)
 
