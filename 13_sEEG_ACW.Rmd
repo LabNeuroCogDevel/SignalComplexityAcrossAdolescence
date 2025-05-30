@@ -1,0 +1,506 @@
+---
+title: "sEEG_ACW"
+author: "Shane Devine McKeon"
+output: html_document
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+library(rstatix)
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+
+outliers <- function(x) {
+  (abs(x - mean(x, na.rm= T)) > (sd(x, na.rm= T) * 2))
+}
+naoutlier <- function(x) ifelse(outliers(x), NA, x)
+```
+
+# Whole Brain
+
+```{r}
+
+seegACW <- read.csv('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/acw/allSubjects_ACW.csv')
+agefile <- read.csv('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/PBE_agefile.csv')
+
+#seegACW <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/allSubjects_ACW.csv')
+#agefile <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/sEEG/PBE_agefile.csv')
+
+seegACW_age <- merge(seegACW, agefile, by ='Subject')
+
+seegACW_avgSecEpochs_wholeBrain <- seegACW_age %>%
+  group_by(Subject) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,17,Inf), labels = c('Adol','Adults')))
+
+
+seegACW_avgSecEpochs<- seegACW_age %>%
+  group_by(Subject, channel ) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,17,Inf), labels = c('Adol','Adults')))
+
+write.csv(seegACW_avgSecEpochs, '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/allSubjects_ACW_avgEpochs.csv')
+
+# see how many adults vs adolescents there are
+seegACW_avgSecEpochs_wholeBrain %>%
++     group_by(ageGroup, Subject, age) %>%
++     summarize(count = n())
+
+```
+
+```{r}
+lunaize(ggplot(data = seegACW_avgSecEpochs_wholeBrain, aes(x = ageGroup, y = ACW_50, fill = ageGroup)) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "AgeGroup") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#012b0d", "#27763d", "#012b0d", "#27763d"))) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white'))
+
+
+t_test_result <- t.test(ACW_50 ~ ageGroup, data = seegACW_avgSecEpochs_wholeBrain)
+print(t_test_result)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/Adol_Adults_allChannels.pdf", device = "pdf", dpi = 500, width = 8, height = 6)
+
+```
+
+```{r}
+lunaize(ggplot(data = seegACW_avgSecEpochs, aes(x = age, y = ACW_50))) + geom_point(aes(color=Subject), alpha =0.3) +
+  geom_smooth(aes(group=1), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) 
+
+lm.model <- lmerTest::lmer(ACW_50 ~ 1 + channel + age + (1|Subject), data = seegACW_avgSecEpochs)
+summary(lm.model)
+
+lunaize(ggplot(data = seegACW_avgSecEpochs_wholeBrain, aes(x = age, y = ACW_50))) + geom_point(aes(color="#012b0d"), alpha =0.3) +
+  geom_smooth(aes(group=1, color = "#012b0d"), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + 
+  geom_text(aes(y = 0.03, x = 21.5, label = "**"), size = 10, color="#012b0d")
+
+lm.model <- lm(ACW_50 ~ age, data = seegACW_avgSecEpochs_wholeBrain)
+summary(lm.model)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/wholeBrain_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 6, height = 6)
+
+
+```
+
+# Assign channels to a region
+
+```{r}
+patient_channel <- read.csv('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/acw/patient_channels.csv')
+ACW_channelLabels <- merge(seegACW_avgSecEpochs, patient_channel, by=c('Subject', 'channel'))
+
+channelROIs <- read.csv('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/allSubjectsROIs.csv')
+colnames(channelROIs)[colnames(channelROIs) == "channel"] <- "Channel_Label"
+
+ACW_channelLabels_ROI <- merge(ACW_channelLabels, channelROIs, by=c('Subject', 'Channel_Label'))
+
+
+assign_lobe <- function(df) {
+  df$Lobe <- NA  # Initialize column
+  
+  # Frontal Lobe
+  df$Lobe[grepl("\\bPreCG\\b|\\bIFG\\b|\\bMFG\\b|\\bSFG\\b|\\bOFC\\b|Frontal|Operculum|\\bSMA\\b|\\bACC\\b|\\bpACC\\b|\\bsACC\\b|\\bIFS\\b|\\bSFS\\b", df$ROI, ignore.case = TRUE)] <- "Frontal"
+  
+  # Temporal Lobe
+  df$Lobe[grepl("\\bSTG\\b|\\bMTG\\b|\\bITG\\b|Hippocampus|Amygdala|\\bFusG\\b|Entorhinal|\\bPhG\\b|HESCHL|\\bSTS\\b|Temporal|\\bCoS\\b", df$ROI, ignore.case = TRUE)] <- "Temporal"
+  
+  # Parietal Lobe
+  df$Lobe[grepl("\\bPostCG\\b|\\bIPL\\b|\\bSPL\\b|Precuneus|\\bIPS\\b|\\bPOperc\\b", df$ROI, ignore.case = TRUE)] <- "Parietal"
+  
+  # Occipital Lobe — make sure V1 and V2 are matched safely
+  df$Lobe[grepl("\\bV1\\b|\\bV2\\b|\\bLOC\\b|Cuneus|\\bLingG\\b|\\bPOS\\b|\\bhOc\\b", df$ROI, ignore.case = TRUE)] <- "Occipital"
+  
+  return(df)
+}
+
+ACW_channelLabels_ROI_lobes <- assign_lobe(ACW_channelLabels_ROI) %>% filter(!is.na(Lobe) & Lobe != 'Temporal')
+
+write.csv(ACW_channelLabels_ROI_lobes, '/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/allSubChannelsAssignedToLobe.csv')
+
+
+ACW_channelLabels_ROI_lobes_outlier <- ACW_channelLabels_ROI_lobes %>% group_by(Subject) %>%
+  mutate(across(c("ACW_50"), naoutlier)) %>% ungroup()
+
+
+```
+
+
+# Adults vs Adol by Region all Channels
+```{r}
+lunaize(ggplot(data = ACW_channelLabels_ROI_lobes, aes(x = Lobe, y = ACW_50, fill = ageGroup)) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "AgeGroup") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d"))) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white'))
+
+pairwise_results <- ACW_channelLabels_ROI_lobes %>%
+  group_by(Lobe) %>%
+  t_test(ACW_50 ~ ageGroup, var.equal = TRUE) %>%
+  adjust_pvalue(method = "bonferroni") # Adjust for multiple comparisons
+
+print(pairwise_results)
+
+
+lunaize(ggplot(data = ACW_channelLabels_ROI_lobes_outlier, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
+  geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + facet_wrap(~Lobe)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesAllChannels_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+
+ACW_channelLabels_ROI_lobes_outlier$Lobe <- as.factor(ACW_channelLabels_ROI_lobes_outlier$Lobe)
+ACW_channelLabels_ROI_lobes_outlier$Subject <- as.factor(ACW_channelLabels_ROI_lobes_outlier$Subject)
+
+gam.model <- gam(ACW_50 ~ Lobe + s(age, k = 3)+ s(age, k=3, by=Lobe) + s(Subject, bs='re'), data=ACW_channelLabels_ROI_lobes_outlier)
+summary(gam.model)
+
+p_values <- summary(gam.model)$s.table[2:4, "p-value"] #just grab the interactions 
+
+# Apply Bonferroni correction
+p.adjust(p_values, method = "bonferroni")
+
+
+lunaize(ggplot(data = ACW_channelLabels_ROI_lobes_outlier, aes(x = age, y = ACW_50))) +
+  geom_smooth(aes(group=Lobe, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.1, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesAllChannels_ACW_acrossAge_oneFig.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+
+```
+
+
+# Adults vs Adol by Region Avg Channels
+```{r}
+
+ACW_channelLabels_ROI_AvgLobes<- ACW_channelLabels_ROI_lobes %>%
+  group_by(Subject, Lobe) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,17,Inf), labels = c('Adol','Adults')))
+
+
+lunaize(ggplot(data = ACW_channelLabels_ROI_AvgLobes, aes(x = Lobe, y = ACW_50, fill = ageGroup)) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "AgeGroup") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d"))) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white'))
+
+
+pairwise_results <- ACW_channelLabels_ROI_AvgLobes %>%
+  group_by(Lobe) %>%
+  t_test(ACW_50 ~ ageGroup, var.equal = TRUE) %>%
+  adjust_pvalue(method = "bonferroni") # Adjust for multiple comparisons
+
+print(pairwise_results)
+
+
+lunaize(ggplot(data = ACW_channelLabels_ROI_AvgLobes, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
+  geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + facet_wrap(~Lobe)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobes_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+
+ACW_channelLabels_ROI_AvgLobes$Lobe <- as.factor(ACW_channelLabels_ROI_AvgLobes$Lobe)
+gam.model <- gam(ACW_50 ~ Lobe + s(age, k = 3)+ s(age, k=3, by=Lobe), data=ACW_channelLabels_ROI_AvgLobes)
+summary(gam.model)
+
+lm.model <- lm(ACW_50 ~ age+ Lobe, data = ACW_channelLabels_ROI_AvgLobes)
+summary(lm.model)
+
+lm.model <- lm(ACW_50 ~ age, data = ACW_channelLabels_ROI_AvgLobes %>% filter(Lobe == 'Frontal'))
+summary(lm.model)
+
+lm.model <- lm(ACW_50 ~ age, data = ACW_channelLabels_ROI_AvgLobes %>% filter(Lobe == 'Occipital'))
+summary(lm.model)
+
+lm.model <- lm(ACW_50 ~ age, data = ACW_channelLabels_ROI_AvgLobes %>% filter(Lobe == 'Parietal'))
+summary(lm.model)
+
+p.adjust(0.022437, method = "bonferroni", n = 3)
+
+
+```
+# Non seizure electrodes 
+```{r}
+library(readxl)
+nonEpContacts <- read_excel('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/nonEPcontacts.xlsx')
+
+ACW_channelLabels_ROI_lobes_outlier <- separate(ACW_channelLabels_ROI_lobes_outlier, Channel_Label, into = c("Letter", "Number"), sep = "_", convert = TRUE) 
+
+# List of subjects
+subjects <-intersect(unique(nonEpContacts$Subject), unique(ACW_channelLabels_ROI_lobes_outlier$Subject))
+
+result <- data.frame()
+
+# Loop through subjects
+for (subject in subjects) {
+  
+  # Initialize lists to store letters and numbers
+  letters_list <- c()
+  numbers_list <- c()
+  
+  # Select contacts for the current subject
+  selectContacts <- nonEpContacts %>%
+    filter(Subject == subject)
+  
+  # Process each contact segment
+  for (segment in selectContacts$nonEpContacts) {
+    # Split each segment into letter and numbers part
+    parts <- strsplit(segment, " ")[[1]]
+    if (length(parts) > 1) {
+      letter <- parts[1]
+      ranges_string <- paste(parts[-1], collapse = " ")  # Join remaining parts
+      
+      # Split ranges by comma to handle multiple ranges
+      ranges <- strsplit(ranges_string, ", ")[[1]]
+      
+      # Function to expand ranges like "1-5" to individual numbers 1, 2, 3, 4, 5
+      expand_range <- function(range) {
+        range_parts <- as.numeric(strsplit(range, "-")[[1]])
+        if (length(range_parts) == 2 && all(!is.na(range_parts))) {
+          return(range_parts[1]:range_parts[2])
+        } else {
+          warning("Invalid range:", range)
+          return(NULL)
+        }
+      }
+      
+      # Process each range in the segment
+      for (range in ranges) {
+        # Expand range into individual numbers
+        expanded_numbers <- expand_range(range)
+        if (!is.null(expanded_numbers)) {
+          # Append letter and expanded numbers to lists
+          letters_list <- c(letters_list, rep(letter, length(expanded_numbers)))
+          numbers_list <- c(numbers_list, expanded_numbers)
+        }
+      }
+    }
+  }
+  
+  # Create a data frame with letters and numbers
+  letterNumberList <- data.frame(
+    Letter = letters_list,
+    Number = numbers_list
+  )
+  
+  filteredData <- merge(ACW_channelLabels_ROI_lobes_outlier, letterNumberList, by = c("Letter", "Number")) %>%
+    subset(., !grepl('EEG', Letter)) %>%
+    filter(Subject == subject)
+  
+  # Bind filtered data to result
+  result <- rbind(result, filteredData)
+}
+
+
+lunaize(ggplot(data = result, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
+  geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + facet_wrap(~Lobe)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesNonEPelectrodes_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+
+result$Lobe <- as.factor(result$Lobe)
+result$Subject <- as.factor(result$Subject)
+
+gam.model <- gam(ACW_50 ~ Lobe + s(age, k = 3)+ s(age, k=3, by=Lobe) + s(Subject, bs='re'), data=result)
+summary(gam.model)
+
+p_values <- summary(gam.model)$s.table[2:4, "p-value"] #just grab the interactions 
+
+# Apply Bonferroni correction
+p.adjust(p_values, method = "bonferroni")
+
+```
+
+
+# Seizure electrodes 
+```{r}
+nonEpContacts <- read_excel('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/nonEPcontacts.xlsx')
+
+# List of subjects
+subjects <-intersect(unique(nonEpContacts$Subject), unique(ACW_channelLabels_ROI_lobes_outlier$Subject))
+
+result_seizureElectrodes <- data.frame()
+
+# Loop through subjects
+for (subject in subjects) {
+  
+  # Initialize lists to store letters and numbers
+  letters_list <- c()
+  numbers_list <- c()
+  
+  # Select contacts for the current subject
+  selectContacts <- nonEpContacts %>%
+    filter(Subject == subject)
+  
+  # Process each contact segment
+  for (segment in selectContacts$nonEpContacts) {
+    # Split each segment into letter and numbers part
+    parts <- strsplit(segment, " ")[[1]]
+    if (length(parts) > 1) {
+      letter <- parts[1]
+      ranges_string <- paste(parts[-1], collapse = " ")  # Join remaining parts
+      
+      # Split ranges by comma to handle multiple ranges
+      ranges <- strsplit(ranges_string, ", ")[[1]]
+      
+      # Function to expand ranges like "1-5" to individual numbers 1, 2, 3, 4, 5
+      expand_range <- function(range) {
+        range_parts <- as.numeric(strsplit(range, "-")[[1]])
+        if (length(range_parts) == 2 && all(!is.na(range_parts))) {
+          return(range_parts[1]:range_parts[2])
+        } else {
+          warning("Invalid range:", range)
+          return(NULL)
+        }
+      }
+      
+      # Process each range in the segment
+      for (range in ranges) {
+        # Expand range into individual numbers
+        expanded_numbers <- expand_range(range)
+        if (!is.null(expanded_numbers)) {
+          # Append letter and expanded numbers to lists
+          letters_list <- c(letters_list, rep(letter, length(expanded_numbers)))
+          numbers_list <- c(numbers_list, expanded_numbers)
+        }
+      }
+    }
+  }
+  
+  # Create a data frame with letters and numbers
+  letterNumberList <- data.frame(
+    Letter = letters_list,
+    Number = numbers_list
+  )
+  
+  filteredData_seizureElectrodes <- anti_join(ACW_channelLabels_ROI_lobes_outlier, letterNumberList, by = c("Letter", "Number")) %>%
+    subset(., !grepl('EEG', Letter)) %>%
+    filter(Subject == subject)
+  
+  # Bind filtered data to result
+  result_seizureElectrodes <- rbind(result_seizureElectrodes, filteredData_seizureElectrodes)
+}
+
+
+lunaize(ggplot(data = result_seizureElectrodes, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
+  geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + facet_wrap(~Lobe)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesEPelectrodes_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+
+result_seizureElectrodes$Lobe <- as.factor(result_seizureElectrodes$Lobe)
+result_seizureElectrodes$Subject <- as.factor(result_seizureElectrodes$Subject)
+
+gam.model <- gam(ACW_50 ~ Lobe + s(age, k = 3)+ s(age, k=3, by=Lobe) + s(Subject, bs='re'), data=result_seizureElectrodes)
+summary(gam.model)
+
+p_values <- summary(gam.model)$s.table[2:4, "p-value"] #just grab the interactions 
+
+# Apply Bonferroni correction
+p.adjust(p_values, method = "bonferroni")
+
+
+```
+
+
