@@ -96,11 +96,9 @@ avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
 gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Occipital'), random=list(lunaid=~1))
 summary(gam.model$gam)
 
-avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
 gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Frontal'), random=list(lunaid=~1))
 summary(gam.model$gam)
 
-avgACW_allEpochs$epoch <- factor(avgACW_allEpochs$epoch, ordered=T)
 gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex  + epoch, data = avgACW_allEpochs %>% filter(region == 'Parietal'), random=list(lunaid=~1))
 summary(gam.model$gam)
 
@@ -239,6 +237,74 @@ epoch.age %>%
 
 
 ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAgeofMatLines.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+```
+
+# Box plots rest vs delay, adol and adults ----
+
+```{r}
+
+lunaize(ggplot(data = avgACW_allEpochs, aes(x = ageGroup, y = ACW_50, fill = interaction(factor(epoch, levels = c("restEyesOpen", "Delays"))))) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "Task") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#012b0d", "#27763d", "#012b0d", "#27763d"))) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white')) + 
+  facet_wrap(~factor(region, levels = c("Frontal", "Parietal", "Occipital")))
+
+
+
+wide <- avgACW_allEpochs %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+
+t.test(wide$Delays_Frontal, wide$restEyesOpen_Frontal, paired = TRUE)
+t.test(wide$Delays_Occipital, wide$restEyesOpen_Occipital, paired = TRUE)
+t.test(wide$Delays_Parietal, wide$restEyesOpen_Parietal, paired = TRUE)
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/INT_task_boxplot_regions_adolAdults.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+```
+
+```{r}
+
+
+lunaize(ggplot(data = avgACW_allEpochs, aes(x = region, y = ACW_50, fill = region)) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+  labs(x = "Epoch", y = "ACW", fill = "Task") +
+  theme_minimal() + 
+  scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d"))) + 
+  theme(
+    legend.position = 'none',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect('white')) + facet_wrap(~epoch)
+
+wide <- avgACW_allEpochs %>% select(-ACW_0) %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+
+t.test(wide$Delays_Frontal, wide$Delays_Occipital, paired = TRUE)
+t.test(wide$Delays_Frontal, wide$Delays_Parietal, paired = TRUE)
+
+t.test(wide$restEyesOpen_Frontal, wide$restEyesOpen_Parietal, paired = TRUE)
+t.test(wide$restEyesOpen_Frontal, wide$restEyesOpen_Occipital, paired = TRUE)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/INT_task_boxplot_regions.pdf", device = "pdf", dpi = 500, width = 12, height = 6)
 
 
 ```

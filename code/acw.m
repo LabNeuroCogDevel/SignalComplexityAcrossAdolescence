@@ -65,6 +65,7 @@ function [acw_0, acw_50, acf, lags] = acw(x, fs, isplot)
 % Example usage: [acw_0, acw_50] = acw(x, 0.5, true);
 % Authored by Yasir Çatal
 % catalyasir@gmail.com
+
 %% The calculation
 
 [acf, lags] = xcorr(x, 'coeff'); 
@@ -84,7 +85,7 @@ if isplot
     hold on
     area(lags(1:ACW_50_i), acf(1:ACW_50_i),'FaceColor','r','FaceAlpha',0.3);
     area(lags(1:ACW_0_i), acf(1:ACW_0_i),'FaceColor','m','FaceAlpha',0.3);
-    title(['ACW-0 = ', num2str(acw_0, '%.1f'), ' ACW-50 = ', num2str(acw_50, '%.1f')])
+    title(['ACW-0 = ', num2str(acw_0, '%f'), ' ACW-50 = ', num2str(acw_50, '%f')])
     xlabel('Lags (s)')
     ylabel('Autocorrelation')
 end 
