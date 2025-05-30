@@ -1,0 +1,133 @@
+---
+title: "Supplement_twoSecondEpochs"
+author: "Shane Devine McKeon"
+output: html_document
+date: "2025-04-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+
+
+```
+
+```{r}
+secsAvgACW_6 <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_avgRegions_delay6.csv')
+secsAvgACW_8 <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_avgRegions_delay8.csv')
+secsAvgACW_10 <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_avgRegions_delay10.csv')
+
+secsAvgACW_10$epoch <- 'Delay10'
+secsAvgACW_8$epoch <- 'Delay8'
+secsAvgACW_6$epoch <- 'Delay6'
+
+
+## Combine Delay Periods ----
+secsAvgACW_allDelays <- rbind(secsAvgACW_10, secsAvgACW_8) %>% rbind(., secsAvgACW_6) %>% filter(region != 'SensoryMotor')
+secsAvgACW_allDelays$epoch <- factor(secsAvgACW_allDelays$epoch, levels = c("Delay10", "Delay8", "Delay6"))
+secsAvgACW_allDelays$secondsEpoch <- factor(secsAvgACW_allDelays$secondsEpoch)
+  
+lunaize(
+  ggplot(data = secsAvgACW_allDelays, 
+         aes(x = secondsEpoch, y = ACW_50, fill = interaction(epoch), color=epoch)) +
+    geom_violin(alpha = 1, position = position_dodge(width = 0.75), color = "black") +
+    scale_color_manual(values = c("#012b0d", "#27763d", "#90b8a6")) + 
+    scale_fill_manual(values = c("#012b0d", "#27763d", "#90b8a6")) + 
+    stat_summary(
+      fun = "mean", 
+      geom = "point", 
+      aes(group = interaction(epoch)),  # Ensure grouping by ageGroup
+      position = position_dodge(width = 0.75), 
+      shape = 23, size = 3, fill = "white", color = "black"
+    )+
+    labs(x = "Seconds Epoch", y = "ACW", fill = "Age Group") +
+    theme_minimal()
+) + facet_wrap(~region) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + epoch *secondsEpoch, data = secsAvgACW_allDelays %>% filter(region == 'Frontal'), random=list(lunaid=~1))
+summary(gam.model)
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + epoch*secondsEpoch, data = secsAvgACW_allDelays %>% filter(region == 'Parietal'), random=list(lunaid=~1))
+summary(gam.model)
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + epoch*secondsEpoch, data = secsAvgACW_allDelays %>% filter(region == 'Occipital'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Supp/secondsEpoch.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+```
+
+```{r}
+
+avgACW_allDelays_avg <- secsAvgACW_allDelays %>%
+  group_by(lunaid, age, sex, visitno, region, secondsEpoch) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+
+lunaize(
+  ggplot(data = avgACW_allDelays_avg, 
+         aes(x = secondsEpoch, y = ACW_50, fill ="#012b0d")) +
+    geom_violin(alpha = 1, position = position_dodge(width = 0.75), color = "black") +
+    scale_color_manual(values = c("#012b0d", "#27763d", "#90b8a6")) + 
+    scale_fill_manual(values = c("#012b0d", "#27763d", "#90b8a6")) + 
+    stat_summary(
+      fun = "mean", 
+      geom = "point", 
+      aes(group = interaction(secondsEpoch)),  # Ensure grouping by ageGroup
+      position = position_dodge(width = 0.75), 
+      shape = 23, size = 3, fill = "white", color = "black"
+    )+
+    labs(x = "Seconds Epoch", y = "ACW", fill = "Age Group") +
+    theme_minimal()
+) + facet_wrap(~region) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Supp/secondsEpoch_avgDelays.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + secondsEpoch, data = avgACW_allDelays_avg %>% filter(region == 'Frontal'), random=list(lunaid=~1))
+summary(gam.model)
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + secondsEpoch, data = avgACW_allDelays_avg %>% filter(region == 'Parietal'), random=list(lunaid=~1))
+summary(gam.model)
+
+gam.model <-  gam(ACW_50 ~ s(age, k = 3) + sex + secondsEpoch, data = avgACW_allDelays_avg %>% filter(region == 'Occipital'), random=list(lunaid=~1))
+summary(gam.model)
+```
