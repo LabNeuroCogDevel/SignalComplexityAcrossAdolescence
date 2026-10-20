@@ -1,10 +1,9 @@
 
- addpath /Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/usefulCode
- addpath /Users/shanemckeon/Library/Application Support/MathWorks/MATLAB Add-Ons/Collections/Colorspace Transformations
- addpath(genpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/generalCode'))
+addpath /Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/usefulCode
+addpath(genpath('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/sEEG/generalCode'))
 
-% addpath(genpath('/Users/shanemckeon/Documents/GitHub/generalCode'))
-% addpath(genpath('/Users/shanemckeon/Documents/GitHub/sEEG/usefulCode'))
+%addpath(genpath('/Users/shanemckeon/Documents/GitHub/generalCode'))
+%addpath(genpath('/Users/shanemckeon/Documents/GitHub/sEEG/usefulCode'))
 
 addpath(('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/resources/eeglab2024.0'));
 eeglab
@@ -29,8 +28,6 @@ for epo = 1:length(setfiles0)
     setfiles{epo,1} = fullfile(datapath, setfiles0(epo).name); % cell array with EEG file names
     % setfiles = arrayfun(@(x) fullfile(folder, x.name), setfiles(~[setfiles.isdir]),folder, 'Uni',0); % cell array with EEG file names
 end
-
-%% plot for every person individually
 
 for i = 1:length(setfiles0)
 
@@ -118,8 +115,8 @@ end
 % Call the function with properly formatted input
 plotInflSurf('mni', subject_ids, all_channels, channel_colors);
 
-%% color by lobe 
-
+%% color by lobe
+ 
 lobeTable = readtable('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/allSubChannelsAssignedToLobe.csv');
 
 uniqueSubs = unique(lobeTable.Subject);
@@ -169,8 +166,72 @@ end
 % Call plotInflSurf once with all channels and their colors
 plotInflSurf('mni', subjectArray, chanLabelArray, lobeCodeArray,[],[],[],[0.0039, 0.1686, 0.0510; 0.1529, 0.4627, 0.2392; 0.5647, 0.7216, 0.6510]);
 
-saveas(gcf, [photoPath, 'lobeColors_left.pdf']);
+saveas(gcf, [photoPath, 'lobeColors_right.pdf']);
 
+
+
+
+
+
+%% non seizure electrodes
+
+lobeTable = readtable('/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/allSubChannelsAssignedToLobe.csv');
+
+nonSeizureElectrodes = readtable('nonEPcontacts_numbersLettersSeparated.csv');
+
+nonSeizureElectrodes.Channel_Label = cellfun(@(l,n) sprintf('%s_%02d', l, n), ...
+    nonSeizureElectrodes.Letter, num2cell(nonSeizureElectrodes.Number), ...
+    'UniformOutput', false);
+
+
+uniqueSubs = unique(nonSeizureElectrodes.Subject);
+
+% Initialize cell arrays
+subjectArray = cell(1, numel(uniqueSubs));
+chanLabelArray = cell(1, numel(uniqueSubs));
+
+% Loop through each subject and extract corresponding Channel_Label values
+for i = 1:numel(uniqueSubs)
+    thisSub = uniqueSubs{i};
+    idx = strcmp(nonSeizureElectrodes.Subject, thisSub);
+    
+    subjectArray{i} = thisSub;  % Store subject ID
+    chanLabelArray{i} = nonSeizureElectrodes.Channel_Label(idx);  % Store channel labels for that subject
+end
+
+% Initialize cell array to hold lobe codes per subject
+lobeCodeArray = cell(1, numel(uniqueSubs));
+
+% Loop through each subject
+for i = 1:numel(uniqueSubs)
+    thisSub = uniqueSubs{i};
+    idx = strcmp(nonSeizureElectrodes.Subject, thisSub);
+    
+    % Get lobe labels for this subject
+    lobes = nonSeizureElectrodes.Lobe(idx);
+    
+    % Convert lobe labels to numeric codes
+    codes = zeros(size(lobes,1),1);
+    for j = 1:numel(lobes)
+        switch lower(strtrim(lobes{j}))
+            case 'frontal'
+                codes(j,:) = 1;
+            case 'parietal'
+                codes(j,:) = 2;
+            case 'occipital'
+                codes(j,:) = 3;
+            otherwise
+                codes(j,:) = NaN; % Optional: handle unexpected labels
+        end
+    end
+    
+    lobeCodeArray{i} = codes;
+end
+
+% Call plotInflSurf once with all channels and their colors
+plotInflSurf('mni', subjectArray, chanLabelArray, lobeCodeArray,[],[],[],[0.0039, 0.1686, 0.0510; 0.1529, 0.4627, 0.2392; 0.5647, 0.7216, 0.6510]);
+
+saveas(gcf, [photoPath, 'lobeColors_leftNonSeizure.pdf']);
 
 
 

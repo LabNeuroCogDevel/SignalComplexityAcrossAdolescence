@@ -1,6 +1,6 @@
 # Load Libraries 
 
-library(LNCDR)
+#library(LNCDR)
 library(dplyr)
 library(ggplot2)
 library(mgcv)
@@ -12,7 +12,7 @@ library(tidyverse)
 library(ggeffects)
 
 # rate of maturation function ----
-growthrate <- function(df, varInterest, smooth_var){
+growthrate <- function(df, varInterest, smooth_var, region){
   
   # epoch.data <- epoch %>%
   #   group_by(Subject, sex) %>%
@@ -26,43 +26,42 @@ growthrate <- function(df, varInterest, smooth_var){
   derv <- derivatives(gam.model, term = 'age', interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
   
   
-  # ## PREDICTION DATA ## 
-  # 
-  # #Extract gam input data
-  # df <- as.data.frame(unclass(gam.model$model), stringsAsFactors = TRUE)  #extract the data used to build the gam, i.e., a df of y + predictor values 
-  # 
-  # #Create a prediction data frame
-  # np <- 200 #predict at np increments of smooth_var
-  # thisPred <- data.frame(init = rep(0,np)) #initiate a prediction df 
-  # 
-  # theseVars <- attr(gam.model$terms,"term.labels") #gam model predictors 
-  # varClasses <- attr(gam.model$terms,"dataClasses") #classes of the model predictors and y measure
-  # thisResp <- as.character(gam.model$terms[[2]]) #the measure to predict
-  # for (v in c(1:length(theseVars))) { #fill the prediction df with data for predictions. These data will be used to predict the output measure (y) at np increments of the smooth_var, holding other model terms constant
-  #   
-  #   thisVar <- theseVars[[v]]
-  #   thisClass <- varClasses[thisVar]
-  #   
-  #   if (thisVar == smooth_var) { 
-  #     thisPred[,smooth_var] = seq(min(df[,smooth_var],na.rm = T),max(df[,smooth_var],na.rm = T), length.out = np) #generate a range of np data points, from minimum of smooth term to maximum of smooth term
-  #   } else {
-  #     switch (thisClass,
-  #             "numeric" = {thisPred[,thisVar] = median(df[,thisVar])}, #make predictions based on median value
-  #             "character" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]}, #make predictions based on first level of char
-  #             "factor" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]}, #make predictions based on first level of factor 
-  #             "ordered" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]} #make predictions based on first level of ordinal variable
-  #     )
-  #   }
-  # }
-  # 
-  # pred <- thisPred %>% select(-init)
+  ## PREDICTION DATA ## 
+  
+  #Extract gam input data
+  df <- as.data.frame(unclass(gam.model$model), stringsAsFactors = TRUE)  #extract the data used to build the gam, i.e., a df of y + predictor values 
+  
+  #Create a prediction data frame
+  np <- 200 #predict at np increments of smooth_var
+  thisPred <- data.frame(init = rep(0,np)) #initiate a prediction df 
+  
+  theseVars <- attr(gam.model$terms,"term.labels") #gam model predictors 
+  varClasses <- attr(gam.model$terms,"dataClasses") #classes of the model predictors and y measure
+  thisResp <- as.character(gam.model$terms[[2]]) #the measure to predict
+  for (v in c(1:length(theseVars))) { #fill the prediction df with data for predictions. These data will be used to predict the output measure (y) at np increments of the smooth_var, holding other model terms constant
+    thisVar <- theseVars[[v]]
+    thisClass <- varClasses[thisVar]
+    if (thisVar == smooth_var) { 
+      thisPred[,smooth_var] = seq(8.5,33, length.out = np) #generate a range of np data points, from minimum of smooth term to maximum of smooth term
+    } else {
+      switch (thisClass,
+              "numeric" = {thisPred[,thisVar] = median(df[,thisVar])}, #make predictions based on median value
+              "character" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]}, #make predictions based on first level of char
+              "factor" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]}, #make predictions based on first level of factor 
+              "ordered" = {thisPred[,thisVar] = levels(df[,thisVar])[[1]]} #make predictions based on first level of ordinal variable
+      )
+    }
+  }
+  pred <- thisPred %>% select(-init)
+  
+  
   
   #GAM derivatives
   #Get derivatives of the smooth function using finite differences
   #derv <- derivatives(gam.model, term = 'age', data = pred, interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
   #Identify derivative significance window(s)
   derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
-    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+    dplyr::mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
   derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
   mean.derivative <- mean(derv$.derivative)
   
@@ -151,24 +150,40 @@ growthrate <- function(df, varInterest, smooth_var){
   gam.statistics <- data.frame(GAM.smooth.Fvalue = as.numeric(gam.smooth.F), GAM.smooth.pvalue = as.numeric(gam.smooth.pvalue), 
                                smooth.change.onset = as.numeric(change.onset), smooth.peak.change = as.numeric(peak.change), smooth.decrease.onset = as.numeric(decrease.onset), 
                                smooth.decrease.offset = as.numeric(decrease.offset), smooth.increase.onset = as.numeric(increase.onset), 
-                               smooth.increase.offset = as.numeric(increase.offset), smooth.last.change = as.numeric(change.offset))
+                               smooth.increase.offset = as.numeric(increase.offset), smooth.last.change = as.numeric(change.offset), 
+                               mean.derivative= as.numeric(mean.derivative))
   
+  
+  ## MODEL FITTED VALUES ##
+  
+  #Generate predictions (fitted values) based on the gam model and predication data frame
+  gam.fittedvalues <- fitted_values(object = gam.model, data = pred)
+  gam.fittedvalues <- gam.fittedvalues %>% select(all_of(smooth_var), .fitted, .se, .lower_ci, .upper_ci)
+  gam.fittedvalues$orig_parcelname <- region
+  
+  ## MODEL SMOOTH ESTIMATES ## 
+  
+  #Estimate the zero-averaged gam smooth function 
+  gam.smoothestimates <- smooth_estimates(object = gam.model, data = pred, smooth = sprintf('s(%s)',smooth_var))
+  gam.smoothestimates <- gam.smoothestimates %>% select(all_of(smooth_var), .estimate, .se)
+  gam.smoothestimates$orig_parcelname <- region
   
   gam.derivatives <- derv %>% select(age, .derivative, .lower_ci, .upper_ci, sig, sig_deriv)
   names(gam.derivatives) <- c("age", "derivative", "lower", "upper", "significant", "significant.derivative")
   
-  gam.results <- list(gam.statistics, gam.derivatives, gam.model)
-  names(gam.results) <- list("gam.statistics", "gam.derivatives", "model")
+  gam.results <- list(gam.statistics, gam.fittedvalues, gam.smoothestimates, gam.derivatives)
+  
+  names(gam.results) <- list("gam.statistics", "gam.fittedvalues", "gam.smoothestimates", "gam.derivatives")
   return(gam.results)
 }
 
-gam.statistics.smooths <- function(input.df, region, smooth_var, id_var, covariates, random_intercepts = FALSE, random_slopes = FALSE, knots, set_fx = FALSE){
+gam.statistics.smooths <- function(input.df, region, dep_var, smooth_var, id_var, covariates, random_intercepts = FALSE, random_slopes = FALSE, knots, set_fx = FALSE){
   
   ## MODEL FITTING ##
   set.seed(1) #for consistency in derivatives + derivative credible intervals
   
   #Format input data
-  gam.data <- input.df #df for gam modeling
+  gam.data <- input.df %>% dplyr::filter(orig_parcelname == region) #df for gam modeling
   parcel <- region 
   region <- str_replace(region, "-", "_") #region for gam modeling
   gam.data[,id_var] <- as.factor(gam.data[,id_var]) #random effects variable must be a factor for mgcv::gam
@@ -184,33 +199,33 @@ gam.statistics.smooths <- function(input.df, region, smooth_var, id_var, covaria
   #Fit the model
   if(random_intercepts == FALSE && random_slopes == FALSE){
     if(covariates != "NA"){
-      modelformula <- as.formula(sprintf("%s ~ s(%s, k = %s, fx = %s) + %s", region, smooth_var, knots, set_fx, covariates))
+      modelformula <- as.formula(sprintf("%s ~ s(%s, k = %s, fx = %s) + %s", dep_var, smooth_var, knots, set_fx, covariates))
       gam.model <- gam(modelformula, method = "REML", data = gam.data)
       gam.results <- summary(gam.model)}
     if(covariates == "NA"){
-      modelformula <- as.formula(sprintf("%s ~ s(%s, k = %s, fx = %s)", region, smooth_var, knots, set_fx))
+      modelformula <- as.formula(sprintf("%s ~ s(%s, k = %s, fx = %s)", dep_var, smooth_var, knots, set_fx))
       gam.model <- gam(modelformula, method = "REML", data = gam.data)
       gam.results <- summary(gam.model)}
   }
   
   if(random_intercepts == TRUE){
     if(covariates != "NA"){
-      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + %6$s", region, smooth_var, knots, set_fx, id_var, covariates))
+      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + %6$s", dep_var, smooth_var, knots, set_fx, id_var, covariates))
       gam.model <- gam(modelformula, method = "REML", family = gaussian(link = "identity"), data = gam.data)
       gam.results <- summary(gam.model)}
     if(covariates == "NA"){
-      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're')", region, smooth_var, knots, set_fx, id_var))
+      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're')", dep_var, smooth_var, knots, set_fx, id_var))
       gam.model <- gam(modelformula, method = "REML", family = gaussian(link = "identity"), data = gam.data)
       gam.results <- summary(gam.model)}
   }
   
   if(random_slopes == TRUE){
     if(covariates != "NA"){
-      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + s(%5$s, %2$s, bs = 're') + %6$s", region, smooth_var, knots, set_fx, id_var, covariates))
+      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + s(%5$s, %2$s, bs = 're') + %6$s", dep_var, smooth_var, knots, set_fx, id_var, covariates))
       gam.model <- gam(modelformula, method = "REML", family = gaussian(link = "identity"), data = gam.data)
       gam.results <- summary(gam.model)}
     if(covariates == "NA"){
-      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + s(%5$s, %2$s, bs = 're')", region, smooth_var, knots, set_fx, id_var))
+      modelformula <- as.formula(sprintf("%1$s ~ s(%2$s, k = %3$s, fx = %4$s) + s(%5$s, bs = 're') + s(%5$s, %2$s, bs = 're')", dep_var, smooth_var, knots, set_fx, id_var))
       gam.model <- gam(modelformula, method = "REML", family = gaussian(link = "identity"), data = gam.data)
       gam.results <- summary(gam.model)}
   }
@@ -250,7 +265,7 @@ gam.statistics.smooths <- function(input.df, region, smooth_var, id_var, covaria
   derv <- derivatives(gam.model, term = sprintf('s(%s)',smooth_var), data = pred, interval = "simultaneous", unconditional = F) #derivative at 200 indices of smooth_var with a simultaneous CI
   #Identify derivative significance window(s)
   derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
-    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+    dplyr::mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
   derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
   mean.derivative <- mean(derv$.derivative)
   
@@ -336,10 +351,11 @@ gam.statistics.smooths <- function(input.df, region, smooth_var, id_var, covaria
   if(sum(derv$sig) == 0){ 
     change.offset <- NA}  
   
-  gam.statistics <- data.frame(orig_parcelname = as.character(parcel), GAM.smooth.Fvalue = as.numeric(gam.smooth.F), GAM.smooth.pvalue = as.numeric(gam.smooth.pvalue), 
+  gam.statistics <- data.frame(GAM.smooth.Fvalue = as.numeric(gam.smooth.F), GAM.smooth.pvalue = as.numeric(gam.smooth.pvalue), 
                                smooth.change.onset = as.numeric(change.onset), smooth.peak.change = as.numeric(peak.change), smooth.decrease.onset = as.numeric(decrease.onset), 
                                smooth.decrease.offset = as.numeric(decrease.offset), smooth.increase.onset = as.numeric(increase.onset), 
-                               smooth.increase.offset = as.numeric(increase.offset), smooth.last.change = as.numeric(change.offset))
+                               smooth.increase.offset = as.numeric(increase.offset), smooth.last.change = as.numeric(change.offset), 
+                               mean.derivative= as.numeric(mean.derivative))
   
   
   ## MODEL FITTED VALUES ##
@@ -448,7 +464,7 @@ gam.covariatesmooth.maineffect <- function(input.df, region, smooth_var, smooth_
   derv <- derivatives(gam.model, term = sprintf('s(%s)', smooth_covariate), data = pred, interval = "simultaneous", unconditional = F) #derivative at indices of smooth_covariate with a simultaneous CI
   #Identify derivative significance window(s)
   derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
-    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+    dplyr::mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
   derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
   mean.derivative <- mean(derv$.derivative)
   
