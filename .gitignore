@@ -4,3 +4,4 @@ resources/
 sEEG/._*
 *.mat
 *.csv
+attic/
