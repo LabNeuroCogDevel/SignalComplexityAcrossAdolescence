@@ -32,6 +32,122 @@ outliers <- function(x) {
   (abs(x - mean(x, na.rm= T)) > (sd(x, na.rm= T) * 2))
 }
 naoutlier <- function(x) ifelse(outliers(x), NA, x)
+
+
+growthrate <- function(df, varInterest, smooth_var){
+  
+  modelformula <- as.formula(sprintf("%s ~ s(age, k = 3, fx = T) + s(Subject, bs = 're')", varInterest))
+  gam.model <-  gam(modelformula, method = "REML", family = gaussian(link = "identity"), data = df)
+  gam.results <- summary(gam.model)
+  
+  derv <- derivatives(gam.model, term = 'age', interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
+  
+  
+  #GAM derivatives
+  #Get derivatives of the smooth function using finite differences
+  #derv <- derivatives(gam.model, term = 'age', data = pred, interval = "simultaneous", unconditional = F, partial_match = T) #derivative at 200 indices of smooth_var with a simultaneous CI
+  #Identify derivative significance window(s)
+  derv <- derv %>% #add "sig" column (TRUE/FALSE) to derv
+    mutate(sig = !(0 > .lower_ci & 0 < .upper_ci)) #derivative is sig if the lower CI is not < 0 while the upper CI is > 0 (i.e., when the CI does not include 0)
+  derv$sig_deriv = derv$.derivative*derv$sig #add "sig_deriv derivatives column where non-significant derivatives are set to 0
+  mean.derivative <- mean(derv$.derivative)
+  
+  #Model summary outputs
+  #Signed F value for the smooth term and GAM-based significance of the smooth term
+  gam.smooth.F <- gam.results$s.table[1,3] #first row is s(smooth_var), third entry is F
+  if(mean.derivative < 0){ #if the average derivative is less than 0, make the effect size estimate negative
+    gam.smooth.F <- gam.smooth.F*-1}
+  
+  gam.smooth.pvalue <- gam.results$s.table[1,4] #first row is s(smooth_var), fourth entry is p-value
+  
+  
+  #Age of developmental change onset
+  if(sum(derv$sig) > 0){ #if derivative is significant at at least 1 age
+    change.onset <- min(derv$age[derv$sig==T])} #find first age in the smooth where derivative is significant
+  if(sum(derv$sig) == 0){ #if gam derivative is never significant
+    change.onset <- NA} #assign NA
+  
+  #Age of maximal developmental change
+  if(sum(derv$sig) > 0){ 
+    derv$abs_sig_deriv = round(abs(derv$sig_deriv),5) #absolute value significant derivatives
+    maxval <- max(derv$abs_sig_deriv) #find the largest derivative
+    window.peak.change <- derv$age[derv$abs_sig_deriv == maxval] #identify the age(s) at which the derivative is greatest in absolute magnitude
+    peak.change <- mean(window.peak.change)} #identify the age of peak developmental change
+  if(sum(derv$sig) == 0){ 
+    peak.change <- NA}  
+  
+  #Age of decrease onset
+  if(sum(derv$sig) > 0){ 
+    decreasing.range <- derv$age[derv$sig_deriv < 0] #identify all ages with a significant negative derivative (i.e., smooth_var indices where y is decreasing)
+    if(length(decreasing.range) > 0)
+      decrease.onset <- min(decreasing.range) #find youngest age with a significant negative derivative
+    if(length(decreasing.range) == 0)
+      decrease.onset <- NA}
+  if(sum(derv$sig) == 0){
+    decrease.onset <- NA}  
+  
+  #Age of decrease offset
+  if(sum(derv$sig) > 0){ 
+    decreasing.range <- derv$age[derv$sig_deriv < 0] #identify all ages with a significant negative derivative (i.e., smooth_var indices where y is decreasing)
+    if(length(decreasing.range) > 0){
+      last.decrease <- max(decreasing.range) #find oldest age with a significant negative derivative
+      if(last.decrease == derv$age[length(derv$age)]) #if the last age of significant decrease is the oldest in the dataset
+        decrease.offset <- last.decrease
+      if(last.decrease != derv$age[length(derv$age)]){ 
+        decrease.offset.row <- which(derv$age == last.decrease) + 1 #use above to find the first age when the derivative is not significant
+        decrease.offset <- derv$age[decrease.offset.row]}
+    }
+    if(length(decreasing.range) == 0)
+      decrease.offset <- NA}
+  if(sum(derv$sig) == 0){ 
+    decrease.offset <- NA}  
+  
+  #Age of increase onset
+  if(sum(derv$sig) > 0){ 
+    increasing.range <- derv$age[derv$sig_deriv > 0] #identify all ages with a significant positive derivative (i.e., smooth_var indices where y is increasing)
+    if(length(increasing.range) > 0)
+      increase.onset <- min(increasing.range) #find oldest age with a significant positive derivative
+    if(length(increasing.range) == 0)
+      increase.onset <- NA}
+  if(sum(derv$sig) == 0){ 
+    increase.onset <- NA}  
+  
+  #Age of increase offset
+  if(sum(derv$sig) > 0){ 
+    increasing.range <- derv$age[derv$sig_deriv > 0] #identify all ages with a significant positive derivative (i.e., smooth_var indices where y is increasing)
+    if(length(increasing.range) > 0){
+      last.increase <- max(increasing.range) #find oldest age with a significant positive derivative
+      if(last.increase == derv$age[length(derv$age)]) #if the last age of significant increase is the oldest in the dataset
+        increase.offset <- last.increase
+      if(last.increase != derv$age[length(derv$age)]){ 
+        increase.offset.row <- which(derv$age == last.increase) + 1 #use above to find the first age when the derivative is not significant
+        increase.offset <- derv$age[increase.offset.row]}
+    }
+    if(length(increasing.range) == 0)
+      increase.offset <- NA}
+  if(sum(derv$sig) == 0){ 
+    increase.offset <- NA}  
+  
+  #Age of last change
+  if(sum(derv$sig) > 0){ 
+    change.offset <- max(derv$age[derv$sig==T])} #find last age in the smooth where derivative is significant
+  if(sum(derv$sig) == 0){ 
+    change.offset <- NA}  
+  
+  gam.statistics <- data.frame(GAM.smooth.Fvalue = as.numeric(gam.smooth.F), GAM.smooth.pvalue = as.numeric(gam.smooth.pvalue), 
+                               smooth.change.onset = as.numeric(change.onset), smooth.peak.change = as.numeric(peak.change), smooth.decrease.onset = as.numeric(decrease.onset), 
+                               smooth.decrease.offset = as.numeric(decrease.offset), smooth.increase.onset = as.numeric(increase.onset), 
+                               smooth.increase.offset = as.numeric(increase.offset), smooth.last.change = as.numeric(change.offset))
+  
+  
+  gam.derivatives <- derv %>% select(age, .derivative, .lower_ci, .upper_ci, sig, sig_deriv)
+  names(gam.derivatives) <- c("age", "derivative", "lower", "upper", "significant", "significant.derivative")
+  
+  gam.results <- list(gam.statistics, gam.derivatives, gam.model)
+  names(gam.results) <- list("gam.statistics", "gam.derivatives", "model")
+  return(gam.results)
+}
+
 ```
 
 # Whole Brain
@@ -60,11 +176,6 @@ seegACW_avgSecEpochs<- seegACW_age %>%
     age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,17,Inf), labels = c('Adol','Adults')))
 
 write.csv(seegACW_avgSecEpochs, '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/allSubjects_ACW_avgEpochs.csv')
-
-# see how many adults vs adolescents there are
-seegACW_avgSecEpochs_wholeBrain %>%
-+     group_by(ageGroup, Subject, age) %>%
-+     summarize(count = n())
 
 ```
 
@@ -155,9 +266,9 @@ assign_lobe <- function(df) {
   df$Lobe[grepl("\\bV1\\b|\\bV2\\b|\\bLOC\\b|Cuneus|\\bLingG\\b|\\bPOS\\b|\\bhOc\\b", df$ROI, ignore.case = TRUE)] <- "Occipital"
   
   return(df)
-}
+}& Lobe != 'Temporal'
 
-ACW_channelLabels_ROI_lobes <- assign_lobe(ACW_channelLabels_ROI) %>% filter(!is.na(Lobe) & Lobe != 'Temporal')
+ACW_channelLabels_ROI_lobes <- assign_lobe(ACW_channelLabels_ROI) %>% filter(!is.na(Lobe) )
 
 write.csv(ACW_channelLabels_ROI_lobes, '/Users/shanemckeon/Library/CloudStorage/OneDrive-UniversityofPittsburgh/PBE_Lab/acw_project/allSubChannelsAssignedToLobe.csv')
 
@@ -195,7 +306,7 @@ print(pairwise_results)
 
 lunaize(ggplot(data = ACW_channelLabels_ROI_lobes_outlier, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
   geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
-  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d", "#729D83")) + 
   theme(
     legend.position = "none",
     axis.text = element_text(size = 20, color = c("black")),
@@ -213,15 +324,14 @@ ACW_channelLabels_ROI_lobes_outlier$Subject <- as.factor(ACW_channelLabels_ROI_l
 gam.model <- gam(ACW_50 ~ Lobe + s(age, k = 3)+ s(age, k=3, by=Lobe) + s(Subject, bs='re'), data=ACW_channelLabels_ROI_lobes_outlier)
 summary(gam.model)
 
-p_values <- summary(gam.model)$s.table[2:4, "p-value"] #just grab the interactions 
 
-# Apply Bonferroni correction
-p.adjust(p_values, method = "bonferroni")
+gam.model <- gam(ACW_50 ~  s(age, k = 3)+ s(Subject, bs='re'), data=ACW_channelLabels_ROI_lobes_outlier %>% filter(Lobe == 'Frontal'))
+summary(gam.model)
 
 
 lunaize(ggplot(data = ACW_channelLabels_ROI_lobes_outlier, aes(x = age, y = ACW_50))) +
   geom_smooth(aes(group=Lobe, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.1, linewidth = 1.5) + 
-  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d", "#729D83")) + 
   theme(
     legend.position = "none",
     axis.text = element_text(size = 20, color = c("black")),
@@ -377,9 +487,9 @@ for (subject in subjects) {
 }
 
 
-lunaize(ggplot(data = result, aes(x = age, y = ACW_50))) + geom_point(aes(color=Lobe), alpha =0.3) +
-  geom_smooth(aes(group=1, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
-  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) + 
+lunaize(ggplot(data = result, aes(x = age, y = ACW_50)))+
+  geom_smooth(aes(group=Lobe, color = Lobe), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + 
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d", "#729D83")) + 
   theme(
     legend.position = "none",
     axis.text = element_text(size = 20, color = c("black")),
@@ -387,9 +497,9 @@ lunaize(ggplot(data = result, aes(x = age, y = ACW_50))) + geom_point(aes(color=
     axis.title.y = element_text(size = 20, color = c("black")),
     axis.line = element_line(linewidth = .2), 
     axis.ticks = element_line(linewidth = .2),
-    strip.background = element_rect('white')) + facet_wrap(~Lobe)
+    strip.background = element_rect('white'))
 
-ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesNonEPelectrodes_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 15, height = 6)
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/sEEG/acw/Figures/lobesNonEPelectrodes_ACW_acrossAge.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
 
 result$Lobe <- as.factor(result$Lobe)
 result$Subject <- as.factor(result$Subject)
@@ -402,8 +512,128 @@ p_values <- summary(gam.model)$s.table[2:4, "p-value"] #just grab the interactio
 # Apply Bonferroni correction
 p.adjust(p_values, method = "bonferroni")
 
-```
 
+gam.model <- gam(ACW_50 ~  s(age, k = 3)+ s(Subject, bs='re'), data=result %>% filter(Lobe == 'Frontal'))
+summary(gam.model)
+
+gam.model <- gam(ACW_50 ~  s(age, k = 3)+ s(Subject, bs='re'), data=result %>% filter(Lobe == 'Parietal'))
+summary(gam.model)
+
+gam.model <- gam(ACW_50 ~  s(age, k = 3)+ s(Subject, bs='re'), data=result %>% filter(Lobe == 'Occipital'))
+summary(gam.model)
+
+gam.model <- gam(ACW_50 ~  s(age, k = 3)+ s(Subject, bs='re'), data=result %>% filter(Lobe == 'Temporal'))
+summary(gam.model)
+
+p.adjust(0.249, method = "bonferroni", n = 3)
+
+
+```
+## Age of maturation 
+```{r}
+
+####  ACW Rate of maturation ----
+
+Lobes <- unique(result$Lobe)
+result$Subject <- as.factor(result$Subject)
+
+# Initialize lists to store results
+gamstats_list <- list()
+gamderivatives_list <- list()
+gammodel_list <- list()
+
+# Loop through each combination of epoch and region
+for (loc in Lobes) {
+  # Apply the growthrate function for each combination
+  allstats <- growthrate(result %>%
+                           filter(Lobe == loc), 'ACW_50', 'age')
+  
+  # Create a data frame of stats and add epoch  info
+  gamstats <- allstats$gam.statistics %>%
+    mutate(region = loc)
+  
+  # Create a data frame of derivatives and add epoch info
+  gamderivatives <- allstats$gam.derivatives %>%
+    mutate(region = loc)
+  
+   # Store results
+    gamstats_list[[paste(loc, sep = "_")]] <- gamstats
+    gamderivatives_list[[paste(loc, sep = "_")]] <- gamderivatives
+    gammodel_list[[paste(loc, sep = "_")]] <- allstats$model
+  
+}
+
+# Combine results into data frames (if desired)
+gamstats_combined <- bind_rows(gamstats_list, .id = "region") 
+
+gamderivatives_combined <- bind_rows(gamderivatives_list, .id = "region")
+
+epoch.rate <- gamderivatives_combined %>% group_by(region) %>% do(rate = mean(.$derivative)) %>% unnest(cols = "rate")
+
+epoch.rate %>% 
+  ggplot(aes(y = rate, x = region, fill = region)) +
+  geom_point(shape = 23, size = 10) +
+  theme_classic() +
+  xlab("\n") +
+  ylab("Mean Derivative\n") +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +  # Custom line colors
+  scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/TaskRestRateofMat.pdf", device = "pdf", dpi = 500, width = 6, height = 9)
+
+
+####  ACW Age of maturation ----
+
+epoch.age <- gamstats_combined %>% group_by(region) %>% do(age = mean(.$smooth.decrease.offset, na.rm = T)) %>% unnest(cols = "age") 
+
+epoch.age %>% 
+  ggplot(aes(x = age, y = epoch, fill = region)) +
+  geom_point(shape = 23, size = 5.5, position=position_jitter(width=0.3, height=0)) +
+  theme_classic() +
+  xlab("\nAge of Maturation") +
+  ylab("epoch\n") +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +  # Custom line colors
+  scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d")) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAgeofMat.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+epoch.age %>% 
+  ggplot(aes(y = age, ymin = 15, x = epoch, ymax = age, group = region, color = region)) +
+  geom_linerange(position = position_dodge(0.5), linewidth = 3) +
+  scale_y_continuous(breaks = c(16, 18, 20, 22, 24, 26, 28, 30, 32)) +
+  ylab("\nAge of Maturation") +
+  xlab("Epoch\n") +
+  coord_flip() +
+  theme_classic() +
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d"))+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 12,  color = c("black")),
+    axis.title.x = element_text(size = 12,  color = c("black")),
+    axis.title.y = element_text(size = 12,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2)) 
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure3/delayRestAgeofMatLines.pdf", device = "pdf", dpi = 500, width = 9, height = 6)
+
+
+```
 
 # Seizure electrodes 
 ```{r}

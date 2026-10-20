@@ -1,0 +1,371 @@
+---
+title: "INT_by_task"
+author: "Shane Devine McKeon"
+output: html_document
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(conflicted)
+library(eegkit)
+
+conflict_prefer("filter", "dplyr")  # Always use dplyr::filter()
+
+
+```
+
+
+
+## Rest vs Delay vs Fix Boxplots - age group
+
+```{r}
+
+avgACW_allEpochs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser/allSubjects_glasserRegions_beamforming_allEpochs.csv') %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+
+lunaize(
+  ggplot(data = avgACW_allEpochs, 
+         aes(x = ageGroup, y = INT_glasser, fill = interaction(factor(epoch, levels = c("Rest", "Delays", "Fix"))))) +
+    geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width=0.35) +
+    labs(x = "Epoch", y = "ACW", fill = "Task") +
+    theme_minimal()
+  + scale_fill_manual(values = c( "#012b0d", "#27763d", "#90b8a6"))) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20,  color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect(fill = "white")) + facet_wrap(~region)
+
+wide <- avgACW_allEpochs %>%
+  unite("epoch_region", epoch, region, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = INT_glasser)
+
+
+t.test(wide$Delays_Frontal, wide$Rest_Frontal, paired = TRUE)
+t.test(wide$Delays_Occipital, wide$Rest_Occipital, paired = TRUE)
+t.test(wide$Delays_Parietal, wide$Rest_Parietal, paired = TRUE)
+
+
+
+wideAdol <- wide %>% filter(ageGroup == 'Adol')
+
+t.test(wideAdol$Delays_Frontal, wideAdol$Rest_Frontal, paired = TRUE)
+t.test(wideAdol$Delays_Occipital, wideAdol$Rest_Occipital, paired = TRUE)
+t.test(wideAdol$Delays_Parietal, wideAdol$Rest_Parietal, paired = TRUE)
+
+t.test(wideAdol$Delays_Frontal, wideAdol$Fix_Frontal, paired = T)
+t.test(wideAdol$Delays_Occipital, wideAdol$Fix_Occipital, paired = TRUE)
+t.test(wideAdol$Delays_Parietal, wideAdol$Fix_Parietal, paired = TRUE)
+
+t.test(wideAdol$Fix_Frontal, wideAdol$Rest_Frontal, paired = TRUE)
+t.test(wideAdol$Fix_Occipital, wideAdol$Rest_Occipital, paired = TRUE)
+t.test(wideAdol$Fix_Parietal, wideAdol$Rest_Parietal, paired = TRUE)
+
+
+
+
+
+wideAdult <- wide %>% filter(ageGroup == 'Adults')
+
+t.test(wideAdult$Delays_Frontal, wideAdult$Rest_Frontal, paired = TRUE)
+t.test(wideAdult$Delays_Occipital, wideAdult$Rest_Occipital, paired = TRUE)
+t.test(wideAdult$Delays_Parietal, wideAdult$Rest_Parietal, paired = TRUE)
+
+t.test(wideAdult$Delays_Frontal, wideAdult$Fix_Frontal, paired = TRUE)
+t.test(wideAdult$Delays_Occipital, wideAdult$Fix_Occipital, paired = TRUE)
+t.test(wideAdult$Delays_Parietal, wideAdult$Fix_Parietal, paired = TRUE)
+
+t.test(wideAdult$Fix_Frontal, wideAdult$Rest_Frontal, paired = TRUE)
+t.test(wideAdult$Fix_Occipital, wideAdult$Rest_Occipital, paired = TRUE)
+t.test(wideAdult$Fix_Parietal, wideAdult$Rest_Parietal, paired = TRUE)
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure2/INT_task_boxplot_regions_allepochs.pdf", device = "pdf", dpi = 500, width = 18, height = 6)
+
+```
+
+## Delay vs fix
+```{r}
+avgACW_allEpochs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser/allSubjects_glasserRegions_beamforming_allEpochs_allregions.csv') %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+```
+
+
+```{r}
+
+avgACW_allEpochs <- avgACW_allEpochs %>%
+  mutate(epoch = factor(epoch, levels = c("Fix", "Delays")))  # Explicit order
+
+lunaize(
+  ggplot(
+    data = avgACW_allEpochs %>% filter(epoch %in% c("Fix", "Delays")),
+    aes(x = epoch, y = ACW_50, fill = epoch)
+  ) +
+    geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35) +
+    geom_line(aes(group = interaction(lunaid)), alpha = 0.2, linewidth = 0.1) +
+    labs(x = "Epoch", y = "ACW", fill = "Task") +
+    theme_minimal()
+) +
+  scale_fill_manual(values = c("Delays" = "#012b0d", "Fix" = "#27763d")) +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.line = element_line(linewidth = 0.2),
+    axis.ticks = element_line(linewidth = 0.2)
+  ) +
+  facet_wrap(~lobe)
+
+```
+# Age of maturation - all regions
+```{r}
+
+####  ACW Rate of maturation ----
+mgs_data <- avgACW_allEpochs %>% filter(epoch %in% c("Fix", "Delays"))
+
+
+epochs <- unique(mgs_data$epoch)
+regions <- unique(mgs_data$orig_parcelname)
+mgs_data$lunaid <- as.factor(mgs_data$lunaid)
+mgs_data$epoch <- as.factor(mgs_data$epoch)
+
+results <- data.frame()
+
+# Loop through each combination of epoch and region
+  for (loc in regions) {
+    
+    region_data <- mgs_data %>% filter(orig_parcelname == loc)
+    
+    wide <- region_data %>%
+  unite("epoch_region", epoch, orig_parcelname, sep = "_") %>%
+  pivot_wider(names_from = "epoch_region", values_from = ACW_50)
+    
+delay_col <- paste0("Delays_", loc)
+  fix_col   <- paste0("Fix_", loc)
+  
+  test <- t.test(
+    wide[[delay_col]],
+    wide[[fix_col]],
+    paired = TRUE
+  )
+  
+  results <- rbind(
+    results,
+    data.frame(
+      region = loc,
+      t = unname(test$statistic),
+      df = unname(test$parameter),
+      p = test$p.value,
+      mean_delay = mean(wide[[delay_col]], na.rm = TRUE),
+      mean_fix = mean(wide[[fix_col]], na.rm = TRUE)
+    )
+  )
+  
+}
+
+results$p_bonf <- p.adjust(results$p, method = "bonferroni")
+results$significant <- results$p_bonf < 0.05
+
+results <- results %>%
+  rename(orig_parcelname = region)
+
+glasser_rois <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/glasser360_regionlist.csv') %>%
+  mutate(roi = gsub('_ROI', '', orig_parcelname)) %>%
+  mutate(roi = gsub('L_', 'Left_', roi)) %>%
+  mutate(roi = gsub('R_', 'Right_', roi))
+
+## run when remote ------------------------------------------------------------
+ glasser <- glasser()
+ glasser$data$hemi <- factor(glasser$data$hemi, levels = c('right','left'))
+ glasser$data$side <- factor(glasser$data$side, levels = c('medial','lateral'))
+
+
+results <- results %>% merge(., glasser_rois, by = 'orig_parcelname', all=T) 
+
+
+## run when remote ------------------------------------------------------------
+results <- results %>%
+  mutate(label = paste0(label, "_ROI"))
+
+
+dramatic_palette <- c(
+  "#001a08",  # near-black green
+  "#012b0d",  # original dark forest
+  "#014421",  # deep emerald
+  "#27763d",  # original medium green
+  "#4fa36a",  # brighter transition
+  "#90b8a6",  # original sage
+  "#d8efe2",  # pale mint
+  "#ffffff"   # white highlight
+)
+
+
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = results,
+    atlas = glasser,
+    aes(fill = t)
+  ) +
+  geom_brain(
+    data = results,
+    atlas = glasser,
+    aes(fill = t),
+    colour = "gray50",
+    size = 0.05
+  ) +
+  scale_fill_gradientn(
+    colours =  rev(dramatic_palette)) + 
+  new_scale_fill() +
+  geom_brain(
+    data = results,
+    atlas = glasser,
+    aes(fill = significant),
+    colour = "gray50",
+    size = 0.05
+  ) +
+  scale_fill_manual(
+    values = c(
+      "TRUE" = alpha("white", 0),
+      "FALSE" = "gray80"
+    ),
+    na.value = alpha("white", 0)
+  )+
+  theme_void(base_family = "Arial") +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 20, color = "#014421"),
+    strip.background = element_rect(fill = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+
+```
+
+```{r}
+
+results_lobe <- data.frame()
+
+lobes <- unique(mgs_data$lobe)
+
+for (loc in lobes) {
+  
+  lobe_data <- mgs_data %>%
+    filter(lobe == loc) %>%
+    group_by(lunaid, epoch) %>%
+    summarise(
+      ACW_50 = mean(ACW_50, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  wide <- lobe_data %>%
+    pivot_wider(
+      names_from = epoch,
+      values_from = ACW_50
+    )
+  
+  test <- t.test(
+    wide$Delays,
+    wide$Fix,
+    paired = TRUE
+  )
+  
+  results_lobe <- rbind(
+    results_lobe,
+    data.frame(
+      lobe = loc,
+      t = unname(test$statistic),
+      df = unname(test$parameter),
+      p = test$p.value,
+      mean_delay = mean(wide$Delays, na.rm = TRUE),
+      mean_fix = mean(wide$Fix, na.rm = TRUE)
+    )
+  )
+}
+
+# Bonferroni correction across lobes
+results_lobe$p_bonf <- p.adjust(
+  results_lobe$p,
+  method = "bonferroni"
+)
+
+results_lobe$significant <- results_lobe$p_bonf < 0.05
+
+
+plot_data <- mgs_data %>%
+  group_by(lunaid, lobe, epoch) %>%
+  summarise(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(
+  plot_data,
+  aes(x = epoch, y = ACW_50, group = lunaid)
+) +
+  geom_line(
+    alpha = 0.15
+  ) +
+  geom_point(
+    aes(fill = epoch),
+    shape = 21,
+    size = 2,
+    alpha = 0.6
+  ) +
+  geom_boxplot(
+    aes(group = epoch, fill = epoch),
+    alpha = 0.8,
+    width = 0.5,
+    outlier.shape = NA
+  ) +  scale_fill_manual(values = c("#012b0d", "#90b8a6")) + 
+  facet_wrap(~ lobe, scales = "free_y") +
+  labs(
+    x = NULL,
+    y = "ACW"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1163 @@
+---
+title: "DevelopmentalEffectsGlasser"
+author: "Shane Devine McKeon"
+output: html_document
+date: "2025-05-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(LNCDR)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+library(lme4)
+library(lmerTest)
+library(tidyr)
+library(gratia)
+library(tidyverse)
+library(ggeffects)
+library(marginaleffects)
+library(extrafont)
+extrafont::loadfonts()
+library(eegkit)
+library(ggseg)
+library(ggsegGlasser)
+library(conflicted)
+conflict_prefer("filter", "dplyr")
+library(ggnewscale)
+
+outliers <- function(x) {
+  (abs(x - mean(x, na.rm= T)) > (sd(x, na.rm= T) * 1.5))
+}
+naoutlier <- function(x) ifelse(outliers(x), NA, x)
+
+glasser_lobes <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser_lobes.csv')
+
+dramatic_palette <- c(
+  "#001a08",  # near-black green
+  "#012b0d",  # original dark forest
+  "#014421",  # deep emerald
+  "#27763d",  # original medium green
+  "#4fa36a",  # brighter transition
+  "#90b8a6",  # original sage
+  "#d8efe2"  # pale mint
+)
+
+```
+
+## Average delay and fix to represent a overall "task state"
+```{r}
+
+avgACW_allEpochs <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser/allSubjects_glasserRegions_beamforming_allEpochs_allregions.csv') %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+
+task = avgACW_allEpochs  %>% dplyr::filter(epoch == 'Delays' | epoch == 'Fix')
+
+task_avg <- task %>%
+  group_by(lunaid, orig_parcelname, age, sex, vdate, visitno, lobe) %>%
+  summarize(
+    ACW_50 = mean(ACW_50, na.rm = TRUE),
+    age = mean(age, na.rm = TRUE)) %>% mutate(ageGroup = cut(age, c(0,18,Inf), labels = c('Adol','Adults')))
+
+
+
+
+# task state ACW decreases across age 
+
+lunaize(ggplot(data = task_avg, aes(x = age, y = ACW_50, color=lobe))) +
+  geom_smooth(aes(group=1), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5)+ facet_wrap(~lobe)+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d", "#d8efe2")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+
+
+
+rest = avgACW_allEpochs  %>% dplyr::filter(epoch == 'Rest')
+task_avg$epoch <- 'Task'
+
+task_rest <- rbind(rest, task_avg)
+
+task_rest <- task_rest %>% group_by(lunaid, lobe, epoch) %>%
+  mutate(across(c("ACW_50"), naoutlier))
+
+write.csv(task_rest, file = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser/allSubjects_glasserRegions_beamforming_taskRest_allregions_2.csv', row.names = F)
+```
+
+
+```{r}
+task_rest <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/glasser/allSubjects_glasserRegions_beamforming_taskRest_allregions_2.csv')
+task_rest$sex <- as.factor(task_rest$sex)
+
+task_rest$epoch <- factor(task_rest$epoch, ordered=T)
+
+
+glasser_rois <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/glasser360_regionlist.csv') %>%
+  mutate(roi = gsub('_ROI', '', orig_parcelname)) %>%
+  mutate(roi = gsub('L_', 'Left_', roi)) %>%
+  mutate(roi = gsub('R_', 'Right_', roi))
+
+
+# -------------------------------------------------------------------
+# Average adol and adults 
+# -------------------------------------------------------------------
+ task_rest_avg <- task_rest %>%
+    group_by(ageGroup, orig_parcelname, epoch) %>%
+    summarize(
+      ACW_50 = mean(ACW_50, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+# run when remote ------------------------------------------------------------
+glasser <- glasser()
+glasser$data$hemi <- factor(glasser$data$hemi, levels = c('right','left'))
+glasser$data$side <- factor(glasser$data$side, levels = c('medial','lateral'))
+#  ---------------------------------------------------------------------------
+
+
+task_rest_avg <- task_rest_avg %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+# run when remote ------------------------------------------------------------
+ task_rest_avg <- task_rest_avg %>% mutate(label = paste0(label, "_ROI"))
+#  ---------------------------------------------------------------------------
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_avg %>% filter(epoch == 'Rest' & ageGroup == 'Adol'),
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = ACW_50)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INT_rest_adol_brain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_avg %>% filter(epoch == 'Rest' & ageGroup == 'Adults'),
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = ACW_50)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INT_rest_adults_brain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_avg %>% filter(epoch == 'Task' & ageGroup == 'Adults'),
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = ACW_50)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8))
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INT_task_adults_brain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_avg %>% filter(epoch == 'Task' & ageGroup == 'Adol'),
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = ACW_50)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INT_task_adol_brain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_avg,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = ACW_50)
+  ) +
+  scale_fill_gradientn(
+    colours = dramatic_palette,
+    limits = c(min(task_rest_avg$ACW_50), max(task_rest_avg$ACW_50))  # adjust to your data
+  ) +
+  facet_wrap(~epoch + ageGroup) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  )
+
+```
+
+# compare to sa axis
+```{r}
+# -------------------------------------------------------------------
+# compare to SA axis
+# -------------------------------------------------------------------
+library(cifti)
+
+glasser.snr.exclude <- read.csv("/Volumes/Hera/Projects/corticalmyelin_development/Maps/SNR/glasser_SNR_exclusion.csv")
+
+glasser.plotting <- glasser_rois
+glasser.plotting$cortex <- "cortex"
+glasser.plotting$cortex[glasser.plotting$orig_parcelname %in% glasser.snr.exclude$orig_parcelname] <- "exclude"
+glasser.plotting <- glasser.plotting %>% select(label, cortex)
+glasser.plotting <- rbind(glasser.plotting, data.frame(label = "rh_???", cortex = "exclude"))
+glasser.plotting <- rbind(glasser.plotting, data.frame(label = "lh_???", cortex = "exclude"))
+glasser.plotting <- glasser.plotting %>% filter(label != "lh_L_10pp")
+
+
+S.A.axis.cifti <- read_cifti("/Volumes/Hera/Projects/corticalmyelin_development/Maps/S-A_ArchetypalAxis/FSLRVertex/SensorimotorAssociation_Axis_parcellated/SensorimotorAssociation.Axis.Glasser360.pscalar.nii") #S-A_ArchetypalAxis repo
+S.A.axis <- data.frame(SA.axis = rank(S.A.axis.cifti$data), orig_parcelname = names(S.A.axis.cifti$Parcel))
+S.A.axis <- merge(S.A.axis, glasser_rois, by = "orig_parcelname")
+
+# run when remote ------------------------------------------------------------
+S.A.axis <- S.A.axis %>% mutate(label = paste0(label, "_ROI"))
+#  ---------------------------------------------------------------------------
+
+
+ggplot() + 
+  geom_brain(data = S.A.axis, atlas = glasser, 
+             side = "lateral", 
+             mapping = aes(fill = SA.axis), 
+             colour=I("gray20"), size=I(.08)) + 
+  theme_classic() + 
+  theme(legend.position = "none") + 
+  scale_fill_gradientn(colors = dramatic_palette, na.value = 'white') + 
+    new_scale_fill() + 
+  theme(legend.position = "none", axis.text = element_blank(), axis.line = element_blank(), axis.ticks = element_blank()) +
+  geom_brain(data = glasser.plotting, atlas = glasser, side = "lateral", mapping = aes(fill = cortex),  colour=I(alpha("gray50", 0)), size=I(0)) +
+  scale_fill_manual(values = c(alpha("white", 0), "gray75")) 
+
+
+SA_adol <- merge(task_rest_avg %>% filter(ageGroup == 'Adol'), S.A.axis, by = 'orig_parcelname')
+SA_adult <- merge(task_rest_avg %>% filter(ageGroup == 'Adults'), S.A.axis, by = 'orig_parcelname')
+
+SA_all <- merge(task_rest_avg, S.A.axis, by = 'orig_parcelname')
+
+
+
+lunaize(ggplot(data = SA_all, aes(x = SA.axis, y = ACW_50, color=ageGroup))) + geom_point(alpha= 0.3)+
+  geom_smooth(aes(group=ageGroup), method='lm', alpha=0.3, linewidth = 1.5)+
+scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid"
+)) +
+  scale_color_manual(values = c("#012b0d", "#90b8a6")) +  # Custom line colors
+  facet_wrap(~epoch) + 
+  theme(
+    legend.position = 'right',
+    axis.text = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.x = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.title.y = element_text(size = 20, color = "black"),  # Removed vectorized input here
+    axis.line = element_line(linewidth = 0.2), 
+    axis.ticks = element_line(linewidth = 0.2), 
+    strip.background = element_blank(),
+    strip.text.x = element_text(hjust = 0)) + 
+  xlab("Sensorimotor-Association Axis") +
+  ylab("ACW (s)")
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/SAaxis_adolAdults_restTask.pdf", device = "pdf", dpi = 500, width = 10, height = 5)
+
+
+
+SA_all %>%
+  filter(epoch == "Task", ageGroup == "Adol") %>%
+  summarise(
+    r = cor(SA.axis, ACW_50, use = "complete.obs"),
+    p = cor.test(SA.axis, ACW_50)$p.value
+  )
+
+
+SA_all %>%
+  filter(epoch == "Task") %>% filter(ageGroup == "Adults") %>%
+  summarise(
+    r = cor(SA.axis, ACW_50, use = "complete.obs"),
+    p = cor.test(SA.axis, ACW_50)$p.value
+  )
+
+
+SA_all %>%
+  filter(epoch == "Rest", ageGroup == "Adol") %>%
+  summarise(
+    r = cor(SA.axis, ACW_50, use = "complete.obs"),
+    p = cor.test(SA.axis, ACW_50)$p.value
+  )
+
+
+SA_all %>%
+  filter(epoch == "Rest") %>% filter(ageGroup == "Adults") %>%
+  summarise(
+    r = cor(SA.axis, ACW_50, use = "complete.obs"),
+    p = cor.test(SA.axis, ACW_50)$p.value
+  )
+
+
+```
+
+
+
+```{r}
+# -------------------------------------------------------------------
+# Plots across age for each lobe
+# -------------------------------------------------------------------
+
+lunaize(ggplot(data = task_rest, aes(x = age, y = ACW_50, color=lobe, linetype=epoch))) + 
+  geom_smooth(aes(group=epoch), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5)+ facet_wrap(~lobe, nrow=1)+
+scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid"
+))+
+  scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d", "#bcded0")) + 
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/INT_task_acrossAge_regions.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+
+# plot brains for each lobe
+
+task_rest_glasserROIs <- task_rest %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_glasserROIs,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = lobe)
+  ) +
+  scale_fill_manual(values = c(
+    "F" = "#012b0d",
+    "P" = "#27763d",
+    "O" = "#90b8a6", 
+    "T" = "#bcded0"))
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/brainPlotsLobes.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+# ----------------------------------
+# DLPFC
+# ----------------------------------
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'R_46_ROI' | orig_parcelname == 'L_46_ROI'), aes(x = age, y = ACW_50, linetype=epoch, color = "#001a08"))) +
+  geom_smooth(aes(group=interaction(epoch)), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) + geom_point(aes(shape=epoch), alpha = 0.5) +
+    geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2, linewidth=0.1) +
+  scale_color_manual(values = c("#001a08")) + 
+  scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid")) +
+  (theme_minimal(base_family = "Arial")) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    plot.title = element_text(size = 20, color = "#001a08"),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'),
+     panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()) + 
+  ggtitle('Dorsolateral Prefrontal Cortex (45)') +
+  xlab("Age") +
+  ylab("ACW (s)") + facet_wrap(~sex)
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/dlpfc.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+
+## main effect
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_46_ROI' | orig_parcelname == 'L_46_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+p.adjust(4.19e-06, method = "BH", n = 360)
+
+## task interaction
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_46_ROI' | orig_parcelname == 'L_46_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_glasserROIs,
+    atlas = glasser,
+    side = "lateral",
+    hemi = "left",
+    aes(fill = orig_parcelname)
+  ) +
+scale_fill_manual(values = c(
+  "R_46_ROI" = "#001a08",
+  "L_46_ROI" = "#001a08"
+), na.value = "white")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/dlpfcBrain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+# ----------------------------------
+# Motor
+# ----------------------------------
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'R_4_ROI' | orig_parcelname == 'L_4_ROI'), aes(x = age, y = ACW_50, linetype=epoch, color = "#014421"))) +
+  geom_smooth(aes(group=interaction(epoch)), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  geom_point(aes(shape=epoch), alpha=0.5)+
+      geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2, linewidth=0.1) +
+  scale_color_manual(values = c("#014421")) + 
+  scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid")) +
+  (theme_minimal(base_family = "Arial")) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    plot.title = element_text(size = 20, color = "#014421"),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'),
+     panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()) + 
+  xlab("Age") +
+  ylab("ACW (s)") + ggtitle('Primary Motor Cortex (4)')
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/motor.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+## main effect
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_4_ROI' | orig_parcelname == 'L_4_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+p.adjust(2e-16, method = "BH", n = 360)
+
+
+## task interaction
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_4_ROI' | orig_parcelname == 'L_4_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_glasserROIs,
+    atlas = glasser,
+    side = "lateral",
+    hemi = "left",
+    aes(fill = orig_parcelname)
+  ) +
+scale_fill_manual(values = c(
+  "L_4_ROI" = "#014421"
+), na.value = "white")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/motorBrain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+
+# ----------------------------------
+# Visual
+# ----------------------------------
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'R_V4_ROI' | orig_parcelname == 'L_V4_ROI'), aes(x = age, y = ACW_50, linetype=epoch, color = "#27763d"))) +
+   geom_smooth(aes(group=interaction(epoch)), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  geom_point(aes(shape=epoch), alpha=0.5)+
+      geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2, linewidth=0.1) +
+  scale_color_manual(values = c("#27763d")) + 
+  scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid")) +
+  (theme_minimal(base_family = "Arial")) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    plot.title = element_text(size = 20, color = "#27763d"),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'),
+     panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()) + 
+  xlab("Age") +
+  ylab("ACW (s)")  + ggtitle('Visual Cortex (V4)')
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/visual.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+
+## main effect
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_V4_ROI' | orig_parcelname == 'L_V4_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+p.adjust(9.93e-05, method = "BH", n = 360)
+
+
+## task interaction
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_V4_ROI' | orig_parcelname == 'L_V4_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_glasserROIs,
+    atlas = glasser,
+    side = "lateral",
+    hemi = "left",
+    aes(fill = orig_parcelname)
+  ) +
+scale_fill_manual(values = c(
+  "L_V4_ROI" = "#27763d"
+), na.value = "white")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/visualBrain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+
+# ----------------------------------
+# Superior Temporal Sulcus
+# ----------------------------------
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'R_STSvp_ROI' | orig_parcelname == 'L_STSvp_ROI'), aes(x = age, y = ACW_50, linetype=epoch, color = "#90b8a6")))+
+   geom_smooth(aes(group=interaction(epoch)), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  geom_point(aes(shape=epoch), alpha=0.5)+
+      geom_line(aes(group= interaction(lunaid, epoch)), alpha = 0.2, linewidth=0.1) +
+  scale_color_manual(values = c("#90b8a6")) + 
+  scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid")) +
+  (theme_minimal(base_family = "Arial")) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    plot.title = element_text(size = 20, color = "#90b8a6"),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white'),
+     panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()) + 
+  xlab("Age") +
+  ylab("ACW (s)") + ggtitle('Superior Temporal Sulcus (STSvp)')
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/STS.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+## main effect
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + sex + epoch, data = task_rest %>% filter(orig_parcelname == 'R_STSvp_ROI' | orig_parcelname == 'L_STSvp_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+p.adjust(9.93e-05, method = "BH", n = 360)
+
+
+## task interaction
+gam.model <-  mgcv::gamm(ACW_50 ~ s(age, k = 3) + s(age, k = 3, by=epoch) + sex , data = task_rest %>% filter(orig_parcelname == 'R_STSvp_ROI' | orig_parcelname == 'L_STSvp_ROI'), random=list(lunaid=~1))
+summary(gam.model$gam)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = task_rest_glasserROIs,
+    atlas = glasser,
+    side = "lateral",
+    hemi = "left",
+    aes(fill = orig_parcelname)
+  ) +
+scale_fill_manual(values = c(
+  "L_STSvp_ROI" = "#90b8a6"
+), na.value = "white")
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/stsBrain.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+```
+
+# Age of maturation - all regions
+```{r}
+
+####  ACW Rate of maturation ----
+
+epochs <- unique(task_rest$epoch)
+regions <- unique(task_rest$orig_parcelname)
+task_rest$lunaid <- as.factor(task_rest$lunaid)
+task_rest$epoch <- as.factor(task_rest$epoch)
+
+# Initialize lists to store results
+gamstats_list <- list()
+gamderivatives_list <- list()
+gammodel_list <- list()
+# Loop through each combination of epoch and region
+for (task in epochs) {
+  for (loc in regions) {
+    
+    # Apply the growthrate function for each combination
+    allstats <- growthrate(task_rest_centered %>% dplyr::filter(epoch == task & orig_parcelname == loc), 'ACW_50', 'age', loc)
+    
+    # Create a data frame of stats and add epoch  info
+    gamstats <- allstats$gam.statistics %>% 
+      mutate(epoch = task) %>%
+      mutate(orig_parcelname = loc)
+    
+    # Create a data frame of derivatives and add epoch info
+    gamderivatives <- allstats$gam.derivatives %>% 
+      mutate(epoch = task) %>%
+      mutate(orig_parcelname = loc)
+    
+    gamsmoothestimates <- allstats$gam.smoothestimates %>% 
+      mutate(epoch = task) %>%
+      mutate(orig_parcelname = loc)
+    
+    gamfittedValues <- allstats$gam.fittedvalues %>% 
+      mutate(epoch = task) %>%
+      mutate(orig_parcelname = loc)
+    
+    # Store results
+    gamstats_glasser_list[[paste(task,loc, sep = "_")]] <- gamstats
+    gamderivatives_glasser_list[[paste(task, loc, sep = "_")]] <- gamderivatives
+    gamsmoothestimates_glasser_list[[paste(task,loc, sep = "_")]] <- gamsmoothestimates
+    gamfittedValues_glasser_list[[paste(task,loc, sep = "_")]] <- gamfittedValues
+    
+    
+  }
+}
+
+saveRDS(gamstats_glasser_list, file = "gamstats_list_allregions_notmeancentered.rds")
+saveRDS(gamderivatives_glasser_list, file = "gamderivatives_list_allregions_notmeancentered.rds")
+saveRDS(gamsmoothestimates_glasser_list, file = "gamsmoothestimates_list_allregions_notmeancentered.rds")
+saveRDS(gamfittedValues_glasser_list, file = "gamfittedValues_list_allregions_notmeancentered.rds")
+
+```
+
+```{r}
+
+gamstats_list <- readRDS("gamstats_list_allregions_notmeancentered.rds")
+gamderivatives_list <- readRDS("gamderivatives_list_allregions_notmeancentered.rds")
+gamsmoothestimates_glasser_list <- readRDS("gamsmoothestimates_list_allregions_notmeancentered.rds")
+
+gamstats_combined <- bind_rows(gamstats_list, .id = "epoch_region") %>%
+  separate(
+    epoch_region,
+    into = c("epoch", "orig_parcelname"),
+    sep = "_",
+    extra = "merge",
+    remove = TRUE
+  )
+
+gamstats_combined <- gamstats_combined %>%
+  mutate(correctedP = p.adjust(GAM.smooth.pvalue, method = "fdr")) %>%
+  mutate(significant = correctedP < 0.05)
+
+gamderivatives_combined <- bind_rows(gamderivatives_list, .id = "epoch_region") %>%
+  separate(
+    epoch_region,
+    into = c("epoch", "orig_parcelname"),
+    sep = "_",
+    extra = "merge",
+    remove = TRUE
+  )
+
+
+glasser_rois <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/glasser360_regionlist.csv') %>%
+  mutate(roi = gsub('_ROI', '', orig_parcelname)) %>%
+  mutate(roi = gsub('L_', 'Left_', roi)) %>%
+  mutate(roi = gsub('R_', 'Right_', roi))
+
+gamstats_combined <- gamstats_combined %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+
+
+dramatic_palette <- c(
+  "#001a08",  # near-black green
+  "#012b0d",  # original dark forest
+  "#014421",  # deep emerald
+  "#27763d",  # original medium green
+  "#4fa36a",  # brighter transition
+  "#90b8a6",  # original sage
+  "#d8efe2",  # pale mint
+  "#f0faf3"   # very pale green
+)
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = gamstats_combined,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = mean.derivative)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) + 
+  facet_wrap(~epoch) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  ) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/meanDerivativeAgeEffects.pdf", device = "pdf", dpi = 500, width = 18, height = 5)
+
+
+## -----------------------------------------------------------------
+## see if the mean derivative follows the sa axis
+## -----------------------------------------------------------------
+
+SA_gamstats <- merge(gamstats_combined, S.A.axis, by = 'orig_parcelname')
+
+lunaize(ggplot(data = SA_gamstats, aes(x = SA.axis, y = mean.derivative, color=epoch))) + geom_point(alpha = 0.3)+
+  geom_smooth(aes(group=epoch), method='lm', alpha=0.3, linewidth = 1.5)+
+scale_linetype_manual(values = c(
+  "Rest" = "dashed",
+  "Task" = "solid"
+)) + facet_wrap(~epoch)+  
+  scale_color_manual(values = c("#012b0d", "#90b8a6")) +  # Custom line colors
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_blank(),
+    strip.text.x = element_text(hjust = 0))
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/meanDerivativeSAaxis.pdf", device = "pdf", dpi = 500, width = 10, height = 5)
+
+
+SA_gamstats %>%
+  filter(epoch == "Task") %>%
+  summarise(
+    r = cor(SA.axis, mean.derivative, use = "complete.obs"),
+    p = cor.test(SA.axis, mean.derivative)$p.value)
+
+
+SA_gamstats %>%
+  filter(epoch == "Rest") %>%
+  summarise(
+    r = cor(SA.axis, mean.derivative, use = "complete.obs"),
+    p = cor.test(SA.axis, mean.derivative)$p.value)
+
+## -----------------------------------------------------------------
+gamstats_combined <- merge(gamstats_combined, glasser_lobes, by = c('orig_parcelname', 'label'))
+
+lunaize(
+  ggplot(data = gamstats_combined, aes(x = epoch, y = mean.derivative, fill = interaction(factor(lobe, levels = c("F", "O", "P","T")))
+  )) +
+  geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.75), color = "black", width = 0.35, outlier.shape = NA) +
+  geom_jitter(aes(color = interaction(factor(epoch, levels = c("Task", "Rest")))),
+    position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.75), alpha = 0.5, size = 2) +
+  scale_fill_manual(values = c("#012b0d", "#27763d", "#90b8a6", "#d8efe2")) +
+  scale_color_manual(values = c("#012b0d", "#27763d", "#90b8a6", "#d8efe2")) +
+  labs(x = "Epoch", y = "mean derivative", fill = "Task", color = "Task") +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.line = element_line(linewidth = 0.2),
+    axis.ticks = element_line(linewidth = 0.2),
+    strip.background = element_rect(fill = "white")))
+
+
+
+# gamderivatives_combined <- gamderivatives_combined %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+# gamderivatives_combined <- merge(gamderivatives_combined, glasser_lobes, by = c('orig_parcelname', 'label'))
+# 
+# epoch.rate <- gamderivatives_combined %>% group_by(epoch, lobe) %>% do(rate = mean(.$derivative)) %>% unnest(cols = "rate")
+# 
+# epoch.rate %>% 
+#   ggplot(aes(y = rate, x = epoch, fill = lobe)) +
+#   geom_point(shape = 23, size = 10) +
+#   theme_classic() +
+#   xlab("\n") +
+#   ylab("Mean Derivative\n") +
+#   scale_color_manual(values = c("#012b0d", "#90b8a6", "#27763d","#d8efe2")) +  # Custom line colors
+#   scale_fill_manual(values = c("#012b0d", "#90b8a6", "#27763d","#d8efe2")) +
+#   theme(
+#     legend.position = "right",
+#     axis.text = element_text(size = 12,  color = c("black")),
+#     axis.title.x = element_text(size = 12,  color = c("black")),
+#     axis.title.y = element_text(size = 12,  color = c("black")),
+#     axis.line = element_line(linewidth = .2), 
+#     axis.ticks = element_line(linewidth = .2)) 
+# 
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = gamstats_combined,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = smooth.decrease.offset)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) + facet_wrap(~epoch)
+
+gamderivatives_combined <- gamderivatives_combined %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = gamderivatives_combined,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = significant.derivative)
+  ) +
+  scale_fill_gradientn(
+  colours =  dramatic_palette) + facet_wrap(~epoch) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  )
+
+
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'R_45_ROI' | orig_parcelname == 'L_45_ROI'), aes(x = age, y = ACW_50, color = epoch))) +
+  geom_smooth(aes(group=interaction(orig_parcelname,epoch)), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  scale_color_manual(values = c("#012b0d", "#90b8a6")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + ggtitle('45')
+
+
+
+lunaize(ggplot(data = task_rest %>% filter(orig_parcelname == 'L_IFSp_ROI' | orig_parcelname == 'R_IFSp_ROI'), aes(x = age, y = ACW_50, color = epoch))) +
+  geom_smooth(aes(group=epoch), method=mgcv::"gam", formula = y ~ s(x, k = 3, fx = T), alpha=0.3, linewidth = 1.5) +
+  scale_color_manual(values = c("#012b0d", "#90b8a6")) + 
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 20, color = c("black")),
+    axis.title.x = element_text(size = 20, color = c("black")),
+    axis.title.y = element_text(size = 20, color = c("black")),
+    axis.line = element_line(linewidth = .2), 
+    axis.ticks = element_line(linewidth = .2),
+    strip.background = element_rect('white')) + ggtitle('IFSp_ROI')
+
+
+
+```
+
+```{r}
+
+regions <- unique(task_rest$orig_parcelname)
+task_rest$lunaid <- as.factor(task_rest$lunaid)
+ageGroups <- unique(task_rest$ageGroup)
+
+# Initialize lists to store results
+pairWiseList <- list()
+
+# Loop through each combination of epoch and region
+for (loc in regions) {
+    for (group in ageGroups) {
+
+  # Apply the growthrate function for each combination
+  wide <- task_rest %>% filter(orig_parcelname == loc & ageGroup == group) %>%
+    pivot_wider(names_from = "epoch", values_from = ACW_50)
+  
+  
+  t.test.output <- t.test(wide$Task, wide$Rest, paired = TRUE)
+  
+  # Store results
+  pairWiseList[[paste(group, loc, sep = "_")]] <- t.test.output
+
+    }
+}
+
+results_df <- imap_dfr(pairWiseList, ~{
+  
+  name_parts <- strsplit(.y, "_")[[1]]
+  
+  data.frame(
+    ageGroup = name_parts[1],
+    orig_parcelname = paste(name_parts[-1], collapse = "_"),
+    mean_difference = unname(.x$estimate),
+    p_value = .x$p.value,
+    t_value = unname(.x$statistic),
+    stringsAsFactors = FALSE
+  )
+})
+  
+results_df <- results_df %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+# run when remote ------------------------------------------------------------
+# results_df <- results_df %>%
+#   mutate(label = paste0(label, "_ROI"))
+#  ---------------------------------------------------------------------------
+
+results_df <- results_df %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "bonferroni"),
+    significant = p_fdr < 0.05
+  )
+
+results_df <- results_df %>%
+  mutate(significant = p_fdr < 0.05)
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = results_df,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = t_value),
+    colour = "gray50",
+    size = 0.05
+  ) +
+  theme( legend.position = "bottom") + 
+  scale_fill_gradient2(
+    low = "navy",
+    mid = "white",
+    high = "#014421",
+    midpoint = 0
+  ) +
+  facet_wrap(~ageGroup) +
+  new_scale_fill()+
+  geom_brain(
+    data = results_df,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = significant),
+    colour = "gray50",
+    size = 0.05
+  ) +
+    scale_fill_manual(
+    values = c(
+      "TRUE" = alpha("white", 0),
+      "FALSE" = "gray80"
+    ),
+    na.value = alpha("white", 0)
+  )
+
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/taskvsrestTvalue.pdf", device = "pdf", dpi = 500, width = 10, height = 5)
+
+
+
+
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = results_df,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = mean_difference),
+    color = dramatic_palette,
+    size = 0.05
+  ) +
+  theme( legend.position = "bottom") + 
+  facet_wrap(~ageGroup) 
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = results_df,
+    atlas = glasser,
+    side = "lateral",
+    aes(fill = mean_difference)
+  ) +
+  scale_fill_gradientn(
+  colours =  rev(dramatic_palette)) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  ) + facet_wrap(~ageGroup) 
+
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/taskvsrestMeanDiff.pdf", device = "pdf", dpi = 500, width = 10, height = 5)
+
+```
+
+
+# Epoch Interactiuon 
+```{r}
+
+####  ACW Rate of maturation ----
+
+regions <- unique(task_rest$orig_parcelname)
+task_rest$lunaid <- as.factor(task_rest$lunaid)
+task_rest$epoch <- as.factor(task_rest$epoch)
+
+task_rest$epoch <- factor(
+  task_rest$epoch,
+  levels = c("Rest", "Task"),
+  ordered = TRUE
+)
+
+# Initialize lists to store results
+interaction_stats_list <- list()
+
+# Loop through each combination of epoch and region
+for (loc in regions) {
+  
+  interaction.model <- gam(ACW_50 ~ s(age, k = 4, fx = F)  + s(age, by = epoch, k = 3) + s(lunaid, bs="re") + epoch, method = c("REML"),  data = task_rest %>% filter(orig_parcelname == loc))
+  
+  results <- data.frame()
+  
+  
+  # Get smooth-term statistics
+  sm <- summary(interaction.model)$s.table
+  
+  # Pull the age-by-epoch term
+  interaction_row <- sm[grep("age.*epoch", rownames(sm)), , drop = FALSE]
+  
+  results <- bind_rows(
+    results,
+    data.frame(
+      orig_parcelname = loc,
+      edf = interaction_row[1, "edf"],
+      F = interaction_row[1, "F"],
+      p = interaction_row[1, "p-value"]
+    )
+  )
+  
+  # Store results
+  
+  interaction_stats_list[[loc]]  <- results
+}
+
+saveRDS(interaction_stats_list, file = "gamstats_list_allregions_ageEpoch_interactions.rds")
+
+```
+
+```{r}
+
+interaction_stats_list <- readRDS("gamstats_list_allregions_ageEpoch_interactions.rds")
+
+gamstats_combined <- bind_rows(interaction_stats_list, .id = "region") %>%
+  separate(
+    region,
+    into = c("orig_parcelname"),
+    sep = "_",
+    extra = "merge",
+    remove = TRUE
+  )
+
+
+
+glasser_rois <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/glasser360_regionlist.csv') %>%
+  mutate(roi = gsub('_ROI', '', orig_parcelname)) %>%
+  mutate(roi = gsub('L_', 'Left_', roi)) %>%
+  mutate(roi = gsub('R_', 'Right_', roi))
+
+gamstats_combined <- gamstats_combined %>% merge(., glasser_rois, by = 'orig_parcelname', all=T)
+
+
+dramatic_palette <- c(
+  "#001a08",  # near-black green
+  "#012b0d",  # original dark forest
+  "#014421",  # deep emerald
+  "#27763d",  # original medium green
+  "#4fa36a",  # brighter transition
+  "#90b8a6",  # original sage
+  "#d8efe2"  # pale mint
+)
+
+
+gamstats_combined <- gamstats_combined %>%
+  mutate(
+    correctedP = p.adjust(p, method = "fdr"),
+    significant = correctedP < 0.05)
+
+
+
+ggplot() +
+  theme_void() +
+  geom_brain(
+    data = gamstats_combined,
+    atlas = glasser,
+    aes(fill = F)
+  ) +
+  geom_brain(
+    data = gamstats_combined,
+    atlas = glasser,
+    aes(fill = F),
+    colour = "gray50",
+    size = 0.05
+  ) +
+  scale_fill_gradientn(
+    colours =  rev(dramatic_palette)) + 
+  new_scale_fill() +
+  geom_brain(
+    data = gamstats_combined,
+    atlas = glasser,
+    aes(fill = significant),
+    colour = "gray50",
+    size = 0.05
+  ) +
+  scale_fill_manual(
+    values = c(
+      "TRUE" = alpha("white", 0),
+      "FALSE" = "gray80"
+    ),
+    na.value = alpha("white", 0)
+  )+
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  ) 
+
+ggsave(filename = "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/Figures/Figure1/epochInterations.pdf", device = "pdf", dpi = 500, width = 10, height = 10)
+
+```
+

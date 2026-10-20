@@ -428,13 +428,13 @@ SGmyelin.electrodes.7T <- lapply(SGmyelin.electrodes.7T, function(depth){
 })
 
 
-# task ----
+## task ----
 acw_task_wide$lunaid <- as.integer(acw_task_wide$lunaid)
 
 myelin.acw.7T <- left_join(SGmyelin.electrodes.7T, acw_task_wide, by = c("lunaid", "visitno"))
 saveRDS(myelin.acw.7T, "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/R1_ACW_task_allDepthsAveraged.RDS")
 
-# rest eyes open ----
+## rest eyes open ----
 acw_rest_outlier_wide$lunaid <- as.integer(acw_rest_outlier_wide$lunaid)
 
 myelin.acw.7T <- left_join(SGmyelin.electrodes.7T, acw_rest_outlier_wide, by = c("lunaid", "visitno"))
@@ -464,7 +464,7 @@ myelin.electrodes.7T <- lapply(myelin.electrodes.7T, function(depth){
 })
 
 
-# task ----
+## task ----
 acw_task_wide <- readRDS("/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/ACW_readyforMyelin_taskState.RDS")
 
 acw_task_wide$lunaid <- as.integer(acw_task_wide$lunaid)
@@ -476,7 +476,7 @@ myelin.acw.7T <- lapply(myelin.electrodes.7T, function(depth){
 
 saveRDS(myelin.acw.7T, "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/R1_ACW_task_allDepths.RDS")
 
-# rest eyes open ----
+## rest eyes open ----
 acw_rest_outlier_wide <- readRDS("/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/Rest/twoSecondSegments/ACW_readyforMyelin_resteyesOpen.RDS")
 
 acw_rest_outlier_wide$lunaid <- as.integer(acw_rest_outlier_wide$lunaid)
@@ -513,3 +513,79 @@ SGIGmyelin.EEGatlas.7T <- lapply(SGIGmyelin.EEGatlas.7T, function(depth){
 })
 
 saveRDS(SGIGmyelin.EEGatlas.7T, "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/superDeep_frontalParietalOccipital_R1.RDS")
+
+
+
+
+
+###############################################################################################################################
+
+combine_electrodes <- function(df, electrode_list, output_name){
+  df$output_name <- df  %>% dplyr::select(all_of(electrode_list)) %>% rowMeans(na.rm = T)
+  return(df)
+}
+
+# Only depth 6 areas of EEG electrodes ----
+participants <- read.csv("/Volumes/Hera/Projects/corticalmyelin_development/sample_info/7T_MP2RAGE_finalsample_demographics.csv") #created by /sample_construction/finalsample_7Tmyelin.Rmd
+participants <- participants %>% mutate(subses = sprintf("%s_%s", subject_id, session_id)) #create a unique scan identifier 
+
+myelin.electrodes.7T <- readRDS("/Volumes/Hera/Projects/corticalmyelin_development/BIDS/derivatives/surface_metrics/depthR1_EEGatlas_finalsample.RDS")
+
+
+# EEG electrode atlas
+myelin.electrodes.7T <- lapply(myelin.electrodes.7T, function(depth){
+  depth <- depth %>% mutate(subses = sprintf("%s_%s", subject_id, session_id)) 
+  depth <- depth %>% select(subject_id, session_id, subses, everything())
+  return(depth)})
+
+### all depths
+SGmyelin.electrodes.7T <- do.call(rbind, myelin.electrodes.7T[1:7]) 
+
+SGmyelin.electrodes.7T$depth <- substr(row.names(SGmyelin.electrodes.7T), 1, 7) #assign depth
+
+cols_to_pivot <- names(SGmyelin.electrodes.7T)[16:69] #atlas region cols
+
+SGmyelin.electrodes.7T.long <- SGmyelin.electrodes.7T %>% pivot_longer(cols = all_of(cols_to_pivot), names_to = "region", values_to = "R1") #long formatted df for grouping
+
+SGmyelin.electrodes.7T <- SGmyelin.electrodes.7T.long %>% filter(depth == 'depth_6') %>% group_by(subses, region) %>% 
+  pivot_wider(id_cols = subses, names_from = "region", values_from = "R1")
+
+SGmyelin.electrodes.7T <- merge(SGmyelin.electrodes.7T, participants, by = "subses")
+
+
+
+frontal_electrodes <- c("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "Fz", "AF1", "AF2", "AF5", "AF6", "AFz", "Fp1", "Fp2")
+sensorymotor_electrodes <- c("C1", "C2", "C3", "C4", "C5", "C6", "Cz", "CP1", "CP2", "CP5", "CP6", "FC1", "FC2", "FC3", "FC4", "FC5", "FC6")
+parietal_electrodes <- c("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "PO3", "PO4", "PO7", "PO8", "POz")
+occipital_electrodes <- c("O1", "O2", "Oz", "I1")
+temporal_electrodes <- c("T7", "T8", "FT9", "FT10")
+
+SGmyelin.electrodes.7T$subses <- as.factor(SGmyelin.electrodes.7T$subses)
+
+
+SGmyelin.electrodes.7T <- SGmyelin.electrodes.7T %>%
+  dplyr::mutate(
+    Frontal_R1   = rowMeans(dplyr::select(., all_of(frontal_electrodes)),   na.rm = TRUE),
+    Parietal_R1  = rowMeans(dplyr::select(., all_of(
+      parietal_electrodes
+    )),  na.rm = TRUE),
+    Occipital_R1 = rowMeans(dplyr::select(., all_of(
+      occipital_electrodes
+    )), na.rm = TRUE)
+  ) %>%
+  dplyr::select(
+    subject_id,
+    session_id,
+    subses,
+    lunaid,
+    visitno,
+    eeg.date,
+    age,
+    sex,
+    Frontal_R1,
+    Parietal_R1,
+    Occipital_R1
+  )
+
+
+saveRDS(SGmyelin.electrodes.7T, "/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/myelinDepth6.RDS")

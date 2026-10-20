@@ -625,6 +625,7 @@ write.csv(rest_task, file = '/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shan
 avgACW_allDelaysavg <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/twoSecondSegments/allSubjects_allChannels_avgDelay.csv')
 avgACW_allDelaysavg$epoch <- 'delays'
 
+
 acw_fix_outlier_avgTrials <- read.csv('/Volumes/Hera/Projects/7TBrainMech/scripts/eeg/Shane/Entropy/Results/acw/MGS/allSubjects_avgTrials_allChans_fix.csv')
 acw_fix_outlier_avgTrials$epoch <- 'fix'
 
