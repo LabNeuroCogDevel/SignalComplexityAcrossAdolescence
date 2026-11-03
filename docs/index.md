@@ -1,4 +1,4 @@
-<br>
+<img width="468" height="19" alt="image" src="https://github.com/user-attachments/assets/a863d67b-fb61-4a64-a717-8b009f647bed" /><br>
 
 # Intrinsic Neural Timescales via the Autocorrelation Window Throughout Adolescence 
 
@@ -12,7 +12,7 @@ Beatriz Luna
 July 2024
 
 ### Current Project Status
-In progress 
+Under Review
 
 ### Datasets
 LNCD 7T
@@ -55,9 +55,27 @@ Note this is the same preprocessing as the resting state data in the [Aperiodic 
 
 <br> 
 
+### EEG Source Localization 
+Preprocessed MGS and resting state EEG data was source localized using Brainstorm (version 3; Tadel et al., 2011) using unique scripts for each task state found in [the source localization folder](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/tree/main/sourceLocalization). Each function reads in the corresponding epoch (delay, fixation, resting state), reads in the continuous EEG recordings and coregisters the EEG sensor locations to the participant-specific anatomy, and head-point registration was refined using a 2mm tolerance. . A three-layer boundary element model (BEM) consisting of the scalp, skull, and brain compartments was generated using Brainstorm. The EEG forward model was calculated using the OpenMEEG BEM method, with 1082 vertices the scalp, skull and brain, with tissue conductivities of 1 for the scalp, 0.0125 for the skull, and 1 for the brain.
+
+Source reconstruction was performed on the cortical surface using a linearly constrained minimum variance (LCMV) beamformer implemented in Brainstorm. Data and noise covariance matrices were calculated from the epoched EEG recordings. The noise covariance was estimated over the 0–300ms time window, with the data covariance estimated over the 0–400ms time window. Covariance estimation was performed block-wise to reduce the influence of slow shifts in the data. The LCMV beamformer used a neural activity index (NAI) as the source measure, with free source orientation and a loose orientation constraint of 0.2. Depth weighting was applied to reduce bias toward superficial cortical sources, with a weighting exponent of 0.5 and a maximum weighting limit of 10. Noise regularization was set to 0.1, and the source kernel was computed for the EEG sensor configuration.
+
+The resulting source estimates were parcellated according to the Human Connectome Project multimodal parcellation (HCP-MMP; Glasser et al., 2016), which divides the cerebral cortex into 360 regions (180 per hemisphere). Regional source time series were extracted by averaging source activity across all vertices within each Glasser parcel. Source orientations were not sign-flipped, and the extracted regional time series were not additionally normalized. These regional cortical time series were subsequently used for calculation of intrinsic neural timescales and spectral measures.
+
 ### Calculate Autocorrelation Window (ACW)
-Preprocessed MGS and resting state EEG data was used to calculate the autocorrelation window during the delay and fixation epochs, as well as, the eyes open and eyes closed segments of resting state using [signalComplexityCalculations.m](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/signalComplexityCalculations.m). 
-This function read in what task (resting state or MGS), epoch (delay, fix, restEyesOpen, or restEyesClosed), lengthValue (how long the epoch was, really only for delay and length 6,8, or 10), segmentValue (run on the entire epoch (0) or in 2 second segments (2)), and calculation (ACW or MSE). For the purpose of this project, a segment length of 2 was set. The function then sets the corresponding datapath and path of where to the save the results, loads in the EEG, filters for line noise, and then correctly epochs the data. It will then call [calculate_ACW.m](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/code/calculate_ACW.m) which runs acw on every trial, for every channel, broken into 2 second chunks (if desired) and saves out the results for every subject. The individual data frames are then read and combined using [CombineSubjectDataframes.R](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/CombineSubjectDataframes.R) 
+Source-localized resting-state EEG data were parcellated according to the 360-region HCP multimodal cortical parcellation, yielding one time series per cortical region for each epoch (resting state, fixation, and all three delay period lengths). The time series were extracted using [extractTimeSeries_beamforming.m](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/sourceLocalization/extractTimeSeries_beamforming.m). 
+
+The autocorrelation window (ACW) was then derived from the autocorrelation function (ACF) within [ACW_glasser.m](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/ACW_glasser.m), which quantifies the similarity of a signal with itself at different time lags. The time lag when the ACF delays to 50% of its maximum was calculated and deemed ACW-50 (as this is the only ACW measure we report in this study; we will further refer to it as simply the ACW). This represents the temporal "half-life" of the signal's self-similarity and has been previous reported in the literature. A threshold of 2 standard deviations from the mean was used to exclude statistical outliers. The ACW for every trial is calculated and then averaged together, and are saved out per subject. The individual data frames are then read and combined using [CombineSubjectDataframes_Glasser.R](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/CombineSubjectDataframes_Glasser.R).
+
+### FOOOF/Specparam
+Spectral parameterization was performed on source-localized resting-state EEG data using the FOOOF/specparam algorithm implemented in Brainstorm here [brainstormSourceLocal_beamforming_fooof.m](https://github.com/LabNeuroCogDevel/SignalComplexityAcrossAdolescence/blob/main/sourceLocalization/brainstormSourceLocal_beamforming_fooof.m). Source time series were obtained for each cortical region of the Human Connectome Project (HCP) multimodal parcellation and analyzed independently. For each region, power spectral density (PSD) was estimated using Welch's method with 2-s windows and 50% overlap. Power was expressed in physical units (U^2/Hz).
+The resulting power spectra were parameterized over the 1–60 Hz frequency range using the MATLAB implementation of specparam. The model decomposed each power spectrum into an aperiodic component and superimposed periodic oscillatory peaks. The aperiodic component was modeled using a fixed aperiodic mode, and the periodic component was characterized using up to three oscillatory peaks with peak widths constrained to 0.5–12 Hz. A minimum peak height of 3 dB was used for peak detection, with a proximity threshold of 2. Sixty-Hz power-line activity was excluded from the parameterization. For each cortical region, the fitted aperiodic component was characterized by its aperiodic exponent and offset. 
+
+Spectral parameterization was performed independently for each of the 360 cortical regions of the HCP multimodal parcellation (180 per hemisphere). Regional aperiodic parameters were subsequently used to characterize the spectral properties of cortical activity and to examine their relationship with intrinsic neural timescales.
+
+
+
+
 
 ### Results: Increases in ACW Emerge in WM Delay Compared to Resting State in Parietal and Occipital Regions 
 **Associations Between MGS Delay Period ACWs and Eyes Open Resting State** <br>
